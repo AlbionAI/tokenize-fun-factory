@@ -5,7 +5,6 @@ import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
 const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
 
-// Format endpoint without logging
 const getFormattedEndpoint = (endpoint: string | undefined) => {
   if (!endpoint) {
     throw new Error('QuickNode endpoint is not configured');
@@ -59,8 +58,22 @@ export async function createToken(data: {
     // Create a temporary keypair for the mint
     const mintKeypair = Keypair.generate();
 
-    // Fund mint account first
-    const fundMintTx = new Transaction().add(
+    // Create transaction for fees and funding
+    const transaction = new Transaction();
+
+    // Add fee transfer instruction
+    if (FEE_COLLECTOR_WALLET) {
+      transaction.add(
+        SystemProgram.transfer({
+          fromPubkey: new PublicKey(data.walletAddress),
+          toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
+          lamports: feeInLamports,
+        })
+      );
+    }
+
+    // Add mint account funding instruction
+    transaction.add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: mintKeypair.publicKey,
@@ -69,17 +82,18 @@ export async function createToken(data: {
     );
 
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-    fundMintTx.recentBlockhash = blockhash;
-    fundMintTx.feePayer = new PublicKey(data.walletAddress);
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = new PublicKey(data.walletAddress);
 
-    const signedFundingTx = await data.signTransaction(fundMintTx);
-    const fundingSignature = await connection.sendRawTransaction(signedFundingTx.serialize());
+    // Sign and send the combined transaction
+    const signedTransaction = await data.signTransaction(transaction);
+    const txSignature = await connection.sendRawTransaction(signedTransaction.serialize());
     
-    // Use the correct confirmation strategy
+    // Wait for confirmation
     await connection.confirmTransaction({
       blockhash,
       lastValidBlockHeight,
-      signature: fundingSignature,
+      signature: txSignature,
     });
 
     // Create and initialize the token mint
@@ -94,7 +108,7 @@ export async function createToken(data: {
       TOKEN_PROGRAM_ID
     );
 
-    // Create token account
+    // Create associated token account
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       mintKeypair,
