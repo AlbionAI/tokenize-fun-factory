@@ -19,6 +19,13 @@ const Index = () => {
     description: "",
     supply: "",
     decimals: 9,
+    logo: null as File | null,
+    website: "",
+    twitter: "",
+    telegram: "",
+    discord: "",
+    creatorName: "",
+    creatorWebsite: "",
   });
 
   const handleNextStep = () => {
@@ -68,7 +75,7 @@ const Index = () => {
                 <TokenCreationStep2 tokenData={tokenData} updateTokenData={updateTokenData} />
               )}
               {currentStep === 3 && (
-                <TokenCreationStep3 tokenData={tokenData} />
+                <TokenCreationStep3 tokenData={tokenData} updateTokenData={updateTokenData} />
               )}
 
               <div className="flex justify-between pt-6">
@@ -76,26 +83,17 @@ const Index = () => {
                   <Button
                     onClick={handlePrevStep}
                     variant="outline"
-                    className="bg-transparent border-gray-600 hover:bg-gray-700"
+                    className="bg-transparent border-gray-700 hover:bg-gray-800"
                   >
-                    Previous
+                    Back
                   </Button>
                 )}
-                {currentStep < 3 ? (
-                  <Button
-                    onClick={handleNextStep}
-                    className="ml-auto bg-purple-600 hover:bg-purple-700"
-                  >
-                    Next Step
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={() => console.log("Create token", tokenData)}
-                    className="ml-auto bg-purple-600 hover:bg-purple-700"
-                  >
-                    Create Token
-                  </Button>
-                )}
+                <Button
+                  onClick={currentStep === 3 ? () => console.log("Create token", tokenData) : handleNextStep}
+                  className="ml-auto bg-emerald-500 hover:bg-emerald-600"
+                >
+                  {currentStep === 3 ? "Create Token" : "Next"}
+                </Button>
               </div>
             </div>
           )}

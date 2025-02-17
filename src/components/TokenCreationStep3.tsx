@@ -1,51 +1,129 @@
 
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 
-interface TokenCreationStep3Props {
-  tokenData: {
-    name: string;
-    symbol: string;
-    description: string;
-    supply: string;
-    decimals: number;
-  };
+interface TokenData {
+  name: string;
+  symbol: string;
+  description: string;
+  supply: string;
+  decimals: number;
+  website: string;
+  twitter: string;
+  telegram: string;
+  discord: string;
+  creatorName: string;
+  creatorWebsite: string;
 }
 
-const TokenCreationStep3 = ({ tokenData }: TokenCreationStep3Props) => {
+interface TokenCreationStep3Props {
+  tokenData: TokenData;
+  updateTokenData: (data: Partial<TokenData>) => void;
+}
+
+const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Props) => {
   return (
     <div className="space-y-6 animate-fade-in">
-      <h2 className="text-2xl font-semibold mb-6">Review & Deploy</h2>
+      <h2 className="text-2xl font-semibold mb-6">Social Links</h2>
       
-      <Card className="bg-gray-700/30 border-gray-600 p-6">
-        <div className="space-y-4">
-          <div className="flex justify-between">
-            <span className="text-gray-400">Name</span>
-            <span className="font-medium">{tokenData.name}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Symbol</span>
-            <span className="font-medium">{tokenData.symbol}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Supply</span>
-            <span className="font-medium">{tokenData.supply}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Decimals</span>
-            <span className="font-medium">{tokenData.decimals}</span>
-          </div>
+      <div className="space-y-6">
+        <div>
+          <Label htmlFor="website">Website</Label>
+          <Input
+            id="website"
+            placeholder="https://yourmemecoin.co"
+            value={tokenData.website}
+            onChange={(e) => updateTokenData({ website: e.target.value })}
+            className="bg-gray-900/50 border-gray-700 text-white mt-2"
+          />
         </div>
-        
-        <div className="mt-6 pt-6 border-t border-gray-600">
-          <h3 className="text-lg font-semibold mb-2">Description</h3>
-          <p className="text-gray-400">{tokenData.description}</p>
-        </div>
-      </Card>
 
-      <div className="bg-gray-700/30 border border-gray-600 rounded-lg p-4 mt-6">
-        <p className="text-sm text-gray-400">
-          Creation Fee: 0.1 SOL
-        </p>
+        <div>
+          <Label htmlFor="twitter">Twitter</Label>
+          <Input
+            id="twitter"
+            placeholder="https://twitter.com/yourmemecoin"
+            value={tokenData.twitter}
+            onChange={(e) => updateTokenData({ twitter: e.target.value })}
+            className="bg-gray-900/50 border-gray-700 text-white mt-2"
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="telegram">Telegram</Label>
+          <Input
+            id="telegram"
+            placeholder="https://t.me/yourchannel"
+            value={tokenData.telegram}
+            onChange={(e) => updateTokenData({ telegram: e.target.value })}
+            className="bg-gray-900/50 border-gray-700 text-white mt-2"
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="discord">Discord</Label>
+          <Input
+            id="discord"
+            placeholder="https://discord.gg/your-server"
+            value={tokenData.discord}
+            onChange={(e) => updateTokenData({ discord: e.target.value })}
+            className="bg-gray-900/50 border-gray-700 text-white mt-2"
+          />
+        </div>
+
+        <div className="pt-6 border-t border-gray-700">
+          <div className="flex items-center justify-between mb-4">
+            <Label>Modify Creator Information</Label>
+            <Switch />
+          </div>
+          
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="creatorName">Creator Name</Label>
+              <Input
+                id="creatorName"
+                placeholder="MemeMint"
+                value={tokenData.creatorName}
+                onChange={(e) => updateTokenData({ creatorName: e.target.value })}
+                className="bg-gray-900/50 border-gray-700 text-white mt-2"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="creatorWebsite">Creator Website</Label>
+              <Input
+                id="creatorWebsite"
+                placeholder="https://mememint.co"
+                value={tokenData.creatorWebsite}
+                onChange={(e) => updateTokenData({ creatorWebsite: e.target.value })}
+                className="bg-gray-900/50 border-gray-700 text-white mt-2"
+              />
+            </div>
+          </div>
+        </div>
+
+        <Card className="bg-gray-800/30 border-gray-700 p-4">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-400">Revoke Freeze</span>
+              <span className="text-sm text-emerald-400">+0.1 SOL</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-400">Revoke Mint</span>
+              <span className="text-sm text-emerald-400">+0.1 SOL</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-400">Revoke Update</span>
+              <span className="text-sm text-emerald-400">+0.1 SOL</span>
+            </div>
+            <div className="flex items-center justify-between pt-4 border-t border-gray-700">
+              <span className="text-gray-400">Total Cost</span>
+              <span className="text-emerald-400">0.05 SOL</span>
+            </div>
+          </div>
+        </Card>
       </div>
     </div>
   );
