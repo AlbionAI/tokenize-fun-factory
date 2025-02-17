@@ -3,12 +3,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 
+interface TokenData {
+  supply: string;
+  decimals: number;
+}
+
 interface TokenCreationStep2Props {
-  tokenData: {
-    supply: string;
-    decimals: number;
-  };
-  updateTokenData: (data: Partial<typeof tokenData>) => void;
+  tokenData: TokenData;
+  updateTokenData: (data: Partial<TokenData>) => void;
 }
 
 const TokenCreationStep2 = ({ tokenData, updateTokenData }: TokenCreationStep2Props) => {

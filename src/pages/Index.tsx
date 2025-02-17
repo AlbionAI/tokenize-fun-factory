@@ -8,8 +8,7 @@ import TokenCreationStep1 from "@/components/TokenCreationStep1";
 import TokenCreationStep2 from "@/components/TokenCreationStep2";
 import TokenCreationStep3 from "@/components/TokenCreationStep3";
 import StepIndicator from "@/components/StepIndicator";
-
-require("@solana/wallet-adapter-react-ui/styles.css");
+import "@solana/wallet-adapter-react-ui/styles.css";
 
 const Index = () => {
   const [currentStep, setCurrentStep] = useState(1);

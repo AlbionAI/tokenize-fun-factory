@@ -3,13 +3,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
+interface TokenData {
+  name: string;
+  symbol: string;
+  description: string;
+}
+
 interface TokenCreationStep1Props {
-  tokenData: {
-    name: string;
-    symbol: string;
-    description: string;
-  };
-  updateTokenData: (data: Partial<typeof tokenData>) => void;
+  tokenData: TokenData;
+  updateTokenData: (data: Partial<TokenData>) => void;
 }
 
 const TokenCreationStep1 = ({ tokenData, updateTokenData }: TokenCreationStep1Props) => {
