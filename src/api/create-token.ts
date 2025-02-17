@@ -74,16 +74,17 @@ export async function createToken(data: {
     const minimumRent = await connection.getMinimumBalanceForRentExemption(82);
     console.log("Minimum rent required:", minimumRent / 1e9, "SOL");
 
-    // Estimate total transaction fees
-    const estimatedTxFee = 10000; // 0.00001 SOL in lamports, increased to account for all transactions
+    // Estimate total transaction fees for all operations
+    const estimatedTxFee = 15000; // Increased to 0.000015 SOL to ensure enough for fees
 
     // Calculate required balance including rent and fees
-    const requiredBalance = feeInLamports + minimumRent + estimatedTxFee;
+    const requiredBalance = feeInLamports;
+    const totalRequiredBalance = requiredBalance + minimumRent + estimatedTxFee;
 
     // Check wallet balance
     const balance = await connection.getBalance(new PublicKey(data.walletAddress));
-    if (balance < requiredBalance) {
-      throw new Error(`Insufficient balance. You need at least ${(requiredBalance / 1e9).toFixed(4)} SOL to create this token.`);
+    if (balance < totalRequiredBalance) {
+      throw new Error(`Insufficient balance. You need at least ${(totalRequiredBalance / 1e9).toFixed(4)} SOL to create this token.`);
     }
 
     // Create a temporary keypair for the mint operation
@@ -94,20 +95,20 @@ export async function createToken(data: {
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
 
     // Create a combined transaction that:
-    // 1. Sends fee to collector
-    // 2. Funds the mint account
+    // 1. Funds the mint account first
+    // 2. Sends remaining fee to collector
     const combinedTransaction = new Transaction().add(
-      // Send fee to collector
-      SystemProgram.transfer({
-        fromPubkey: new PublicKey(data.walletAddress),
-        toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
-        lamports: feeInLamports - minimumRent - estimatedTxFee,
-      }),
-      // Fund mint account
+      // Fund mint account first
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: mintKeypair.publicKey,
         lamports: minimumRent,
+      }),
+      // Then send fee to collector
+      SystemProgram.transfer({
+        fromPubkey: new PublicKey(data.walletAddress),
+        toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
+        lamports: feeInLamports - minimumRent - estimatedTxFee, // Deduct all costs from fee
       })
     );
 
