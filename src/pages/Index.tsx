@@ -70,12 +70,6 @@ const Index = () => {
             <div className="text-center py-12">
               <h2 className="text-3xl font-semibold mb-4">Connect Your Wallet</h2>
               <p className="text-[#8B96A5] text-lg">Connect your Solana wallet to start creating your token</p>
-              <Button 
-                onClick={() => {}} 
-                className="mt-6 bg-[#00B679] hover:bg-[#00A069] text-white px-8 py-6 text-lg h-auto"
-              >
-                Connecting ...
-              </Button>
             </div>
           ) : (
             <div className="space-y-8">
