@@ -9,15 +9,19 @@ const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
 
 // Ensure the endpoint starts with https://
 const getFormattedEndpoint = (endpoint: string | undefined) => {
+  console.log("Configuring endpoint with:", endpoint);
+  
   if (!endpoint) {
+    console.error("QuickNode endpoint is not configured in environment variables");
     throw new Error('QuickNode endpoint is not configured');
   }
   
-  if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
-    return `https://${endpoint}`;
-  }
-  
-  return endpoint;
+  const formattedEndpoint = !endpoint.startsWith('http://') && !endpoint.startsWith('https://')
+    ? `https://${endpoint}`
+    : endpoint;
+    
+  console.log("Using formatted endpoint:", formattedEndpoint);
+  return formattedEndpoint;
 };
 
 export async function createToken(data: {
@@ -35,11 +39,25 @@ export async function createToken(data: {
   creatorName?: string;
 }) {
   try {
+    console.log("Starting token creation with data:", {
+      ...data,
+      walletAddress: data.walletAddress.substring(0, 4) + '...' // truncate for privacy
+    });
+
     // Initialize connection to Solana using QuickNode with properly formatted endpoint
     const formattedEndpoint = getFormattedEndpoint(QUICKNODE_ENDPOINT);
+    console.log("Initializing Solana connection with endpoint");
     const connection = new Connection(formattedEndpoint, 'confirmed');
-    console.log("Starting token creation process...");
-    
+
+    // Test connection
+    try {
+      const version = await connection.getVersion();
+      console.log("Successfully connected to Solana. Version:", version);
+    } catch (error) {
+      console.error("Failed to connect to Solana:", error);
+      throw new Error('Failed to connect to Solana network');
+    }
+
     // Calculate total fee in lamports (1 SOL = 1e9 lamports)
     let totalFee = 0.05; // Base fee
     if (data.authorities) {
