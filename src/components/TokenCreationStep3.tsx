@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
+import { createToken } from '@/api/create-token';
 
 interface TokenCreationStep3Props {
   tokenData: {
@@ -48,26 +49,14 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
 
     setIsCreating(true);
     try {
-      const response = await fetch('/api/create-token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...tokenData,
-          walletAddress: publicKey.toString()
-        }),
+      const result = await createToken({
+        ...tokenData,
+        walletAddress: publicKey.toString()
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create token');
-      }
 
       toast({
         title: "Success!",
-        description: `Token created successfully! Address: ${data.tokenAddress}`,
+        description: `Token created successfully! Address: ${result.tokenAddress}`,
       });
 
     } catch (error) {
