@@ -16,8 +16,11 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-// You can also provide a custom RPC endpoint
-const endpoint = clusterApiUrl("devnet");
+// Use Solana's public devnet endpoint by default, or QuickNode if configured
+const endpoint = import.meta.env.VITE_QUICKNODE_ENDPOINT 
+  ? `https://${import.meta.env.VITE_QUICKNODE_ENDPOINT}` 
+  : clusterApiUrl("devnet");
+
 const wallets = [new PhantomWalletAdapter()];
 
 const App = () => (
