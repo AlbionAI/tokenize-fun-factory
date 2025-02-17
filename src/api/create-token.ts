@@ -1,6 +1,7 @@
 
-import { Connection, PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from '@solana/spl-token';
+import * as bs58 from 'bs58';
 
 // Your fee collector wallet address
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
@@ -61,10 +62,13 @@ export async function createToken(data: {
 
     console.log("Fee payment confirmed:", signature);
 
+    // Create a temporary keypair for the mint operation
+    const mintKeypair = Keypair.generate();
+
     // Create token mint with selected authorities
     const mint = await createMint(
       connection,
-      data.walletAddress, // The customer's wallet is the payer
+      mintKeypair, // Using temporary keypair as payer
       new PublicKey(data.walletAddress), // The customer's wallet is the mint authority
       data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
       data.decimals
@@ -75,7 +79,7 @@ export async function createToken(data: {
     // Get the token account of the customer's wallet address, and if it does not exist, create it
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
-      data.walletAddress,
+      mintKeypair, // Using temporary keypair as payer
       mint,
       new PublicKey(data.walletAddress)
     );
@@ -86,7 +90,7 @@ export async function createToken(data: {
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
     await mintTo(
       connection,
-      data.walletAddress,
+      mintKeypair, // Using temporary keypair as payer
       mint,
       tokenAccount.address,
       new PublicKey(data.walletAddress),
