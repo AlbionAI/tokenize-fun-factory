@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Button } from '@/components/ui/button';
@@ -49,6 +48,7 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
     // Add 0.1 SOL for each selected authority
     if (tokenData.authorities) {
       if (tokenData.authorities.freezeAuthority) totalFee += 0.1;
+      if (tokenData.authorities.mintAuthority) totalFee += 0.1;
       if (tokenData.authorities.mintAuthority) totalFee += 0.1;
       if (tokenData.authorities.updateAuthority) totalFee += 0.1;
     }
