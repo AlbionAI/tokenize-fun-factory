@@ -1,7 +1,6 @@
 
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
-import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from '@solana/spl-token';
-import * as bs58 from 'bs58';
+import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 
 // Your fee collector wallet address
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
@@ -49,8 +48,9 @@ export async function createToken(data: {
     );
 
     // Get the recent blockhash
-    const { blockhash } = await connection.getLatestBlockhash();
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
     feeTransaction.recentBlockhash = blockhash;
+    feeTransaction.lastValidBlockHeight = lastValidBlockHeight;
     feeTransaction.feePayer = new PublicKey(data.walletAddress);
 
     // Have the user sign the transaction
@@ -58,20 +58,43 @@ export async function createToken(data: {
 
     // Send and confirm fee transaction
     const signature = await connection.sendRawTransaction(signedTransaction.serialize());
-    await connection.confirmTransaction(signature);
+    await connection.confirmTransaction({
+      signature,
+      blockhash,
+      lastValidBlockHeight
+    });
 
     console.log("Fee payment confirmed:", signature);
 
     // Create a temporary keypair for the mint operation
     const mintKeypair = Keypair.generate();
+    
+    // Fund the mint keypair with the minimum rent exemption
+    const minimumRent = await connection.getMinimumBalanceForRentExemption(82);
+    const fundMintAccountTx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: new PublicKey(data.walletAddress),
+        toPubkey: mintKeypair.publicKey,
+        lamports: minimumRent,
+      })
+    );
+    
+    fundMintAccountTx.recentBlockhash = blockhash;
+    fundMintAccountTx.feePayer = new PublicKey(data.walletAddress);
+    
+    const signedFundingTx = await data.signTransaction(fundMintAccountTx);
+    await connection.sendRawTransaction(signedFundingTx.serialize());
 
     // Create token mint with selected authorities
     const mint = await createMint(
       connection,
-      mintKeypair, // Using temporary keypair as payer
+      mintKeypair,
       new PublicKey(data.walletAddress), // The customer's wallet is the mint authority
       data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
-      data.decimals
+      data.decimals,
+      undefined,
+      undefined,
+      TOKEN_PROGRAM_ID
     );
 
     console.log("Created mint:", mint.toBase58());
@@ -79,9 +102,13 @@ export async function createToken(data: {
     // Get the token account of the customer's wallet address, and if it does not exist, create it
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
-      mintKeypair, // Using temporary keypair as payer
+      mintKeypair,
       mint,
-      new PublicKey(data.walletAddress)
+      new PublicKey(data.walletAddress),
+      undefined,
+      undefined,
+      undefined,
+      TOKEN_PROGRAM_ID
     );
 
     console.log("Created token account:", tokenAccount.address.toBase58());
@@ -90,11 +117,14 @@ export async function createToken(data: {
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
     await mintTo(
       connection,
-      mintKeypair, // Using temporary keypair as payer
+      mintKeypair,
       mint,
       tokenAccount.address,
       new PublicKey(data.walletAddress),
-      supplyNumber
+      supplyNumber,
+      [],
+      undefined,
+      TOKEN_PROGRAM_ID
     );
 
     console.log("Minted tokens successfully");
