@@ -21,7 +21,7 @@ export async function createToken(data: {
 }) {
   try {
     // Initialize connection to Solana mainnet
-    const endpoint = process.env.QUICKNODE_ENDPOINT || clusterApiUrl('devnet'); // Using devnet for testing
+    const endpoint = process.env.QUICKNODE_ENDPOINT || clusterApiUrl('mainnet-beta');
     console.log("Using endpoint:", endpoint);
     
     const connection = new Connection(endpoint, 'confirmed');
