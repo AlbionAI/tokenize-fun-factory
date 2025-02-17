@@ -2,6 +2,9 @@
 import { Connection, clusterApiUrl, PublicKey, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from '@solana/spl-token';
 
+// The public key of the wallet that will collect fees
+const FEE_COLLECTOR_WALLET = process.env.FEE_COLLECTOR_WALLET || "YOUR_WALLET_ADDRESS_HERE";
+
 export async function createToken(data: {
   name: string;
   symbol: string;
@@ -16,15 +19,16 @@ export async function createToken(data: {
     
     const connection = new Connection(endpoint, 'confirmed');
 
-    // Create token mint
+    // Create token mint with fee collector as mint authority
     const fromWallet = Keypair.generate();
     console.log("Generated wallet public key:", fromWallet.publicKey.toString());
+    console.log("Fee collector wallet:", FEE_COLLECTOR_WALLET);
 
     const mint = await createMint(
       connection,
-      fromWallet,
-      fromWallet.publicKey,
-      null,
+      fromWallet, // payer
+      new PublicKey(FEE_COLLECTOR_WALLET), // mint authority
+      new PublicKey(FEE_COLLECTOR_WALLET), // freeze authority
       data.decimals
     );
 
@@ -56,7 +60,8 @@ export async function createToken(data: {
     return {
       success: true,
       tokenAddress: mint.toBase58(),
-      ownerAddress: fromWallet.publicKey.toBase58()
+      ownerAddress: fromWallet.publicKey.toBase58(),
+      mintAuthority: FEE_COLLECTOR_WALLET
     };
   } catch (error) {
     console.error('Error in createToken:', error);
