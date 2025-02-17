@@ -93,12 +93,14 @@ const Index = () => {
                     Back
                   </Button>
                 )}
-                <Button
-                  onClick={currentStep === 3 ? () => console.log("Create token", tokenData) : handleNextStep}
-                  className="ml-auto bg-[#00B679] hover:bg-[#00A069]"
-                >
-                  {currentStep === 3 ? "Create Token" : "Next"}
-                </Button>
+                {currentStep < 3 && (
+                  <Button
+                    onClick={handleNextStep}
+                    className="ml-auto bg-[#00B679] hover:bg-[#00A069]"
+                  >
+                    Next
+                  </Button>
+                )}
               </div>
             </div>
           )}
