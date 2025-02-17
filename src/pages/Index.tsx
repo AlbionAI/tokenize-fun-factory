@@ -50,26 +50,32 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0D1117] text-white p-8">
+    <div className="min-h-screen bg-[#0B1221] text-white p-8">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12 space-y-4 animate-fade-in">
-          <h1 className="text-4xl font-bold">Create Your Solana Token</h1>
-          <p className="text-gray-400">Launch your token in minutes with our simple three-step process</p>
+          <h1 className="text-5xl font-bold mb-4">Launch a Meme Coin At Lightning Speed!</h1>
+          <p className="text-[#8B96A5] text-xl">No coding required, launched in seconds the professional way</p>
         </div>
 
         <div className="mb-8">
           <StepIndicator currentStep={currentStep} totalSteps={3} />
         </div>
 
-        <Card className="bg-[#1B2030]/95 backdrop-blur-lg border-[#2A2F45] p-8 rounded-xl shadow-xl">
+        <Card className="bg-[#131B2E] border-[#1C2539] p-8 rounded-xl shadow-xl">
           <div className="mb-6 flex justify-end">
-            <WalletMultiButton className="!bg-[#00C097] hover:!bg-[#00A080] transition-colors" />
+            <WalletMultiButton className="!bg-[#00B679] hover:!bg-[#00A069] transition-colors" />
           </div>
 
           {!connected ? (
             <div className="text-center py-12">
-              <h2 className="text-2xl font-semibold mb-4">Connect Your Wallet to Start</h2>
-              <p className="text-gray-400">You need to connect your Solana wallet to create a token</p>
+              <h2 className="text-3xl font-semibold mb-4">Connect Your Wallet</h2>
+              <p className="text-[#8B96A5] text-lg">Connect your Solana wallet to start creating your token</p>
+              <Button 
+                onClick={() => {}} 
+                className="mt-6 bg-[#00B679] hover:bg-[#00A069] text-white px-8 py-6 text-lg h-auto"
+              >
+                Connecting ...
+              </Button>
             </div>
           ) : (
             <div className="space-y-8">
@@ -88,14 +94,14 @@ const Index = () => {
                   <Button
                     onClick={handlePrevStep}
                     variant="outline"
-                    className="bg-transparent border-[#2A2F45] hover:bg-[#2A2F45] text-white"
+                    className="bg-transparent border-[#1C2539] hover:bg-[#1C2539] text-white"
                   >
                     Back
                   </Button>
                 )}
                 <Button
                   onClick={currentStep === 3 ? () => console.log("Create token", tokenData) : handleNextStep}
-                  className="ml-auto bg-[#00C097] hover:bg-[#00A080]"
+                  className="ml-auto bg-[#00B679] hover:bg-[#00A069]"
                 >
                   {currentStep === 3 ? "Create Token" : "Next"}
                 </Button>

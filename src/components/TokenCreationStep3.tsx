@@ -1,4 +1,3 @@
-
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
@@ -41,7 +40,7 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
             placeholder="https://yourmemecoin.co"
             value={tokenData.website}
             onChange={(e) => updateTokenData({ website: e.target.value })}
-            className="bg-[#1B2030]/50 border-[#2A2F45] text-white mt-2"
+            className="bg-[#131B2E]/50 border-[#1C2539] text-white mt-2"
           />
         </div>
 
@@ -52,7 +51,7 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
             placeholder="https://twitter.com/yourmemecoin"
             value={tokenData.twitter}
             onChange={(e) => updateTokenData({ twitter: e.target.value })}
-            className="bg-[#1B2030]/50 border-[#2A2F45] text-white mt-2"
+            className="bg-[#131B2E]/50 border-[#1C2539] text-white mt-2"
           />
         </div>
 
@@ -63,7 +62,7 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
             placeholder="https://t.me/yourchannel"
             value={tokenData.telegram}
             onChange={(e) => updateTokenData({ telegram: e.target.value })}
-            className="bg-[#1B2030]/50 border-[#2A2F45] text-white mt-2"
+            className="bg-[#131B2E]/50 border-[#1C2539] text-white mt-2"
           />
         </div>
 
@@ -74,14 +73,14 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
             placeholder="https://discord.gg/your-server"
             value={tokenData.discord}
             onChange={(e) => updateTokenData({ discord: e.target.value })}
-            className="bg-[#1B2030]/50 border-[#2A2F45] text-white mt-2"
+            className="bg-[#131B2E]/50 border-[#1C2539] text-white mt-2"
           />
         </div>
 
-        <div className="pt-6 border-t border-[#2A2F45]">
+        <div className="pt-6 border-t border-[#1C2539]">
           <div className="flex items-center justify-between mb-4">
             <Label>Modify Creator Information</Label>
-            <Switch className="data-[state=checked]:bg-[#00C097]" />
+            <Switch className="data-[state=checked]:bg-[#00B679]" />
           </div>
           
           <div className="space-y-4">
@@ -92,7 +91,7 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
                 placeholder="MemeMint"
                 value={tokenData.creatorName}
                 onChange={(e) => updateTokenData({ creatorName: e.target.value })}
-                className="bg-[#1B2030]/50 border-[#2A2F45] text-white mt-2"
+                className="bg-[#131B2E]/50 border-[#1C2539] text-white mt-2"
               />
             </div>
 
@@ -103,20 +102,20 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
                 placeholder="https://mememint.co"
                 value={tokenData.creatorWebsite}
                 onChange={(e) => updateTokenData({ creatorWebsite: e.target.value })}
-                className="bg-[#1B2030]/50 border-[#2A2F45] text-white mt-2"
+                className="bg-[#131B2E]/50 border-[#1C2539] text-white mt-2"
               />
             </div>
           </div>
         </div>
 
-        <div className="pt-6 border-t border-[#2A2F45]">
+        <div className="pt-6 border-t border-[#1C2539]">
           <h3 className="text-lg font-semibold mb-4">Revoke Authorities</h3>
-          <p className="text-sm text-gray-400 mb-6">
+          <p className="text-[#8B96A5] text-sm mb-6">
             Enhance trust and decentralization by revoking token authorities. This prevents future changes to your token's supply, transfers, and metadata - making it more appealing to investors who value security and immutability.
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <Card className="bg-[#1B2030]/30 border-[#2A2F45] p-4">
+            <Card className="bg-[#131B2E]/30 border-[#1C2539] p-4">
               <div className="flex items-center justify-between mb-2">
                 <Label>Revoke Freeze</Label>
                 <Switch 
@@ -129,14 +128,14 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
                       } 
                     })
                   }
-                  className="data-[state=checked]:bg-[#00C097]"
+                  className="data-[state=checked]:bg-[#00B679]"
                 />
               </div>
-              <p className="text-xs text-gray-400">Freeze Authority allows you to freeze token accounts of your holders.</p>
-              <div className="mt-2 text-[#00C097] text-right">+0.1 SOL</div>
+              <p className="text-xs text-[#8B96A5]">Freeze Authority allows you to freeze token accounts of your holders.</p>
+              <div className="mt-2 text-[#00B679] text-right">+0.1 SOL</div>
             </Card>
 
-            <Card className="bg-[#1B2030]/30 border-[#2A2F45] p-4">
+            <Card className="bg-[#131B2E]/30 border-[#1C2539] p-4">
               <div className="flex items-center justify-between mb-2">
                 <Label>Revoke Mint</Label>
                 <Switch 
@@ -149,14 +148,14 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
                       } 
                     })
                   }
-                  className="data-[state=checked]:bg-[#00C097]"
+                  className="data-[state=checked]:bg-[#00B679]"
                 />
               </div>
-              <p className="text-xs text-gray-400">Mint Authority allows you to mint more supply of your token.</p>
-              <div className="mt-2 text-[#00C097] text-right">+0.1 SOL</div>
+              <p className="text-xs text-[#8B96A5]">Mint Authority allows you to mint more supply of your token.</p>
+              <div className="mt-2 text-[#00B679] text-right">+0.1 SOL</div>
             </Card>
 
-            <Card className="bg-[#1B2030]/30 border-[#2A2F45] p-4">
+            <Card className="bg-[#131B2E]/30 border-[#1C2539] p-4">
               <div className="flex items-center justify-between mb-2">
                 <Label>Revoke Update</Label>
                 <Switch 
@@ -169,18 +168,18 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
                       } 
                     })
                   }
-                  className="data-[state=checked]:bg-[#00C097]"
+                  className="data-[state=checked]:bg-[#00B679]"
                 />
               </div>
-              <p className="text-xs text-gray-400">Update Authority allows you to update the token metadata.</p>
-              <div className="mt-2 text-[#00C097] text-right">+0.1 SOL</div>
+              <p className="text-xs text-[#8B96A5]">Update Authority allows you to update the token metadata.</p>
+              <div className="mt-2 text-[#00B679] text-right">+0.1 SOL</div>
             </Card>
           </div>
 
-          <Card className="bg-[#1B2030]/30 border-[#2A2F45] p-4">
+          <Card className="bg-[#131B2E]/30 border-[#1C2539] p-4">
             <div className="flex items-center justify-between">
-              <span className="text-gray-400">Total Cost</span>
-              <span className="text-[#00C097]">0.05 SOL</span>
+              <span className="text-[#8B96A5]">Total Cost</span>
+              <span className="text-[#00B679]">0.05 SOL</span>
             </div>
           </Card>
         </div>
