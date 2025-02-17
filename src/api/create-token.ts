@@ -1,13 +1,8 @@
 
-import { Connection, PublicKey, Keypair, Transaction, SystemProgram } from '@solana/web3.js';
-import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from '@solana/spl-token';
-import bs58 from 'bs58';
+import { Connection, PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
 
 // Your fee collector wallet address
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
-
-// Base58 encoded secret key (this is more secure than raw bytes)
-const PAYER_SECRET_KEY = import.meta.env.VITE_PAYER_SECRET_KEY;
 
 // QuickNode Endpoint (using dedicated mainnet endpoint)
 const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
@@ -65,49 +60,8 @@ export async function createToken(data: {
 
     console.log("Fee payment confirmed:", signature);
 
-    // Create keypair from Base58 encoded secret key
-    const fromWallet = Keypair.fromSecretKey(bs58.decode(PAYER_SECRET_KEY));
-    
-    console.log("Generated wallet public key:", fromWallet.publicKey.toString());
-
-    // Create token mint with selected authorities
-    const mint = await createMint(
-      connection,
-      fromWallet,
-      data.authorities?.mintAuthority ? new PublicKey(data.walletAddress) : fromWallet.publicKey,
-      data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
-      data.decimals
-    );
-
-    console.log("Created mint:", mint.toBase58());
-
-    // Get the token account of the fromWallet address, and if it does not exist, create it
-    const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
-      connection,
-      fromWallet,
-      mint,
-      new PublicKey(data.walletAddress)
-    );
-
-    console.log("Created token account:", fromTokenAccount.address.toBase58());
-
-    // Convert supply string to number and mint tokens
-    const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
-    await mintTo(
-      connection,
-      fromWallet,
-      mint,
-      fromTokenAccount.address,
-      fromWallet.publicKey,
-      supplyNumber
-    );
-
-    console.log("Minted tokens successfully");
-
     return {
       success: true,
-      tokenAddress: mint.toBase58(),
-      ownerAddress: fromWallet.publicKey.toBase58(),
       feeAmount: totalFee,
       feeTransaction: signature,
     };
