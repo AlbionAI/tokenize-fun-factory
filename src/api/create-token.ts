@@ -1,4 +1,3 @@
-
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 
@@ -7,6 +6,19 @@ const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
 
 // QuickNode Endpoint (using dedicated mainnet endpoint)
 const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
+
+// Ensure the endpoint starts with https://
+const getFormattedEndpoint = (endpoint: string | undefined) => {
+  if (!endpoint) {
+    throw new Error('QuickNode endpoint is not configured');
+  }
+  
+  if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+    return `https://${endpoint}`;
+  }
+  
+  return endpoint;
+};
 
 export async function createToken(data: {
   name: string;
@@ -23,8 +35,9 @@ export async function createToken(data: {
   creatorName?: string;
 }) {
   try {
-    // Initialize connection to Solana using QuickNode
-    const connection = new Connection(QUICKNODE_ENDPOINT!, 'confirmed');
+    // Initialize connection to Solana using QuickNode with properly formatted endpoint
+    const formattedEndpoint = getFormattedEndpoint(QUICKNODE_ENDPOINT);
+    const connection = new Connection(formattedEndpoint, 'confirmed');
     console.log("Starting token creation process...");
     
     // Calculate total fee in lamports (1 SOL = 1e9 lamports)
