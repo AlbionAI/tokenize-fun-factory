@@ -11,9 +11,28 @@ interface TokenCreationStep3Props {
     supply: string;
     decimals: number;
   };
+  updateTokenData: (data: Partial<{
+    name: string;
+    symbol: string;
+    description: string;
+    supply: string;
+    decimals: number;
+    logo: File | null;
+    website: string;
+    twitter: string;
+    telegram: string;
+    discord: string;
+    creatorName: string;
+    creatorWebsite: string;
+    authorities: {
+      freezeAuthority: boolean;
+      mintAuthority: boolean;
+      updateAuthority: boolean;
+    };
+  }>) => void;
 }
 
-const TokenCreationStep3 = ({ tokenData }: TokenCreationStep3Props) => {
+const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Props) => {
   const { publicKey } = useWallet();
   const [isCreating, setIsCreating] = useState(false);
 
