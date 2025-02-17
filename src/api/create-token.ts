@@ -70,83 +70,55 @@ export async function createToken(data: {
     
     const feeInLamports = totalFee * 1e9;
 
+    // Check wallet balance
+    const balance = await connection.getBalance(new PublicKey(data.walletAddress));
+    if (balance < feeInLamports) {
+      throw new Error(`Insufficient balance. You need at least ${totalFee.toFixed(4)} SOL to create this token.`);
+    }
+
     // Get minimum rent for token account
     const minimumRent = await connection.getMinimumBalanceForRentExemption(82);
     console.log("Minimum rent required:", minimumRent / 1e9, "SOL");
 
-    // Estimate transaction fees
-    const estimatedTxFee = 15000; // 0.000015 SOL per transaction
+    // Calculate the amount to send to fee collector (total fee minus network costs)
+    const estimatedTxFee = 5000; // 0.000005 SOL in lamports
+    const feeCollectorAmount = feeInLamports - minimumRent - estimatedTxFee;
+    console.log("Amount to fee collector:", feeCollectorAmount / 1e9, "SOL");
 
-    // Calculate total required balance (including ALL costs)
-    const totalRequiredBalance = feeInLamports + minimumRent + (estimatedTxFee * 2);
-
-    // Check wallet balance
-    const balance = await connection.getBalance(new PublicKey(data.walletAddress));
-    if (balance < totalRequiredBalance) {
-      throw new Error(`Insufficient balance. You need at least ${(totalRequiredBalance / 1e9).toFixed(4)} SOL to create this token.`);
-    }
-
-    // Create a temporary keypair for the mint operation
-    const mintKeypair = Keypair.generate();
-    console.log("Generated mint keypair:", mintKeypair.publicKey.toBase58());
-
-    // Get the recent blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-
-    // First transaction: Send fee to collector
-    // Only deduct the minimumRent from the fee payment, leave transaction fees in wallet
+    console.log("Step 1: Paying creation fee...");
+    
+    // Create a fee transfer transaction
     const feeTransaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
-        lamports: feeInLamports - minimumRent,
+        lamports: feeCollectorAmount,
       })
     );
 
+    // Get the recent blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
     feeTransaction.recentBlockhash = blockhash;
     feeTransaction.lastValidBlockHeight = lastValidBlockHeight;
     feeTransaction.feePayer = new PublicKey(data.walletAddress);
 
-    // Have the user sign and send the fee transaction first
-    const signedFeeTransaction = await data.signTransaction(feeTransaction);
-    const feeSignature = await connection.sendRawTransaction(signedFeeTransaction.serialize());
+    // Have the user sign the transaction
+    const signedTransaction = await data.signTransaction(feeTransaction);
+
+    // Send and confirm fee transaction
+    const signature = await connection.sendRawTransaction(signedTransaction.serialize());
     await connection.confirmTransaction({
-      signature: feeSignature,
+      signature,
       blockhash,
       lastValidBlockHeight
     });
 
-    console.log("Fee payment confirmed:", feeSignature);
+    console.log("Fee payment confirmed:", signature);
 
-    // Get new blockhash for mint funding transaction
-    const { blockhash: newBlockhash, lastValidBlockHeight: newLastValidBlockHeight } = 
-      await connection.getLatestBlockhash('finalized');
-
-    // Second transaction: Fund mint account
-    const mintFundingTransaction = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: new PublicKey(data.walletAddress),
-        toPubkey: mintKeypair.publicKey,
-        lamports: minimumRent,
-      })
-    );
-
-    mintFundingTransaction.recentBlockhash = newBlockhash;
-    mintFundingTransaction.lastValidBlockHeight = newLastValidBlockHeight;
-    mintFundingTransaction.feePayer = new PublicKey(data.walletAddress);
-
-    // Have the user sign and send the mint funding transaction
-    const signedMintFundingTransaction = await data.signTransaction(mintFundingTransaction);
-    const mintFundingSignature = await connection.sendRawTransaction(signedMintFundingTransaction.serialize());
-    await connection.confirmTransaction({
-      signature: mintFundingSignature,
-      blockhash: newBlockhash,
-      lastValidBlockHeight: newLastValidBlockHeight
-    });
-
-    console.log("Mint account funding confirmed:", mintFundingSignature);
+    // Create a temporary keypair for the mint operation
+    const mintKeypair = Keypair.generate();
     
-    console.log("Creating mint account...");
+    console.log("Step 2: Creating mint account...");
     
     // Create token mint with selected authorities
     const mint = await createMint(
@@ -161,6 +133,8 @@ export async function createToken(data: {
     );
 
     console.log("Created mint:", mint.toBase58());
+
+    console.log("Step 3: Creating token account...");
     
     // Get the token account of the customer's wallet address, and if it does not exist, create it
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
@@ -175,6 +149,8 @@ export async function createToken(data: {
     );
 
     console.log("Created token account:", tokenAccount.address.toBase58());
+
+    console.log("Step 4: Minting initial supply...");
     
     // Convert supply string to number and mint tokens
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
@@ -196,7 +172,7 @@ export async function createToken(data: {
       success: true,
       tokenAddress: mint.toBase58(),
       feeAmount: totalFee,
-      feeTransaction: feeSignature,
+      feeTransaction: signature,
     };
   } catch (error) {
     console.error('Error in createToken:', error);
