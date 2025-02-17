@@ -46,6 +46,7 @@
     "@solana/web3.js": "^1.98.0",
     "@tanstack/react-query": "^5.56.2",
     "@vercel/node": "^5.1.7",
+    "bs58": "^5.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
