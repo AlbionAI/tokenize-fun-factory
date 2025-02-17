@@ -1,15 +1,16 @@
-import { Connection, clusterApiUrl, PublicKey, Keypair, Transaction, SystemProgram } from '@solana/web3.js';
+
+import { Connection, PublicKey, Keypair, Transaction, SystemProgram } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from '@solana/spl-token';
 import bs58 from 'bs58';
 
 // Your fee collector wallet address
-const FEE_COLLECTOR_WALLET = "EBTxkJvzBEfGJZMGAaFBqkw5EYsk7zRt1Z4aqHSmu8Qf";
+const FEE_COLLECTOR_WALLET = process.env.FEE_COLLECTOR_WALLET;
 
 // Base58 encoded secret key (this is more secure than raw bytes)
-const PAYER_SECRET_KEY = '4NwwCqYHGdRXUqJtjZwgXVHxYjNtaX6NJFCvmN3TMdcXzY4vEtJCgdd9ALbjHXhVGqetR6PBQvYNhPYxTYQFfaFh';
+const PAYER_SECRET_KEY = process.env.PAYER_SECRET_KEY;
 
 // QuickNode Endpoint (using dedicated mainnet endpoint)
-const QUICKNODE_ENDPOINT = 'https://api.quicknode.com/chain/solana/mainnet-beta';
+const QUICKNODE_ENDPOINT = process.env.QUICKNODE_ENDPOINT;
 
 export async function createToken(data: {
   name: string;
@@ -27,7 +28,7 @@ export async function createToken(data: {
 }) {
   try {
     // Initialize connection to Solana using QuickNode
-    const connection = new Connection(QUICKNODE_ENDPOINT, 'confirmed');
+    const connection = new Connection(QUICKNODE_ENDPOINT!, 'confirmed');
     console.log("Using QuickNode endpoint:", QUICKNODE_ENDPOINT);
     
     // Calculate total fee in lamports (1 SOL = 1e9 lamports)
