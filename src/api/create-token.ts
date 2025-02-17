@@ -3,7 +3,7 @@ import { Connection, clusterApiUrl, PublicKey, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from '@solana/spl-token';
 
 // The public key of the wallet that will collect fees - make sure this is a valid Solana address
-const FEE_COLLECTOR_WALLET = process.env.FEE_COLLECTOR_WALLET || "REPLACE_WITH_YOUR_ACTUAL_WALLET_ADDRESS";
+const FEE_COLLECTOR_WALLET = "EBTxkJvzBEfGJZMGAaFBqkw5EYsk7zRt1Z4aqHSmu8Qf";
 
 export async function createToken(data: {
   name: string;
