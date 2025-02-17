@@ -40,7 +40,7 @@ interface TokenCreationStep3Props {
 }
 
 const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Props) => {
-  const { publicKey } = useWallet();
+  const { publicKey, signTransaction } = useWallet();
   const [isCreating, setIsCreating] = useState(false);
 
   const calculateFees = () => {
@@ -60,7 +60,7 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
   };
 
   const handleCreateToken = async () => {
-    if (!publicKey) {
+    if (!publicKey || !signTransaction) {
       toast({
         title: "Error",
         description: "Please connect your wallet first",
@@ -73,7 +73,8 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
     try {
       const result = await createToken({
         ...tokenData,
-        walletAddress: publicKey.toString()
+        walletAddress: publicKey.toString(),
+        signTransaction
       });
 
       toast({

@@ -1,5 +1,5 @@
 
-import { Connection, clusterApiUrl, PublicKey, Keypair, Transaction, SystemProgram, sendAndConfirmTransaction } from '@solana/web3.js';
+import { Connection, clusterApiUrl, PublicKey, Keypair, Transaction, SystemProgram } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from '@solana/spl-token';
 
 // Your fee collector wallet address
@@ -11,6 +11,7 @@ export async function createToken(data: {
   supply: string;
   decimals: number;
   walletAddress: string;
+  signTransaction: (transaction: Transaction) => Promise<Transaction>;
   authorities?: {
     freezeAuthority: boolean;
     mintAuthority: boolean;
@@ -45,12 +46,17 @@ export async function createToken(data: {
       })
     );
 
+    // Get the recent blockhash
+    const { blockhash } = await connection.getLatestBlockhash();
+    feeTransaction.recentBlockhash = blockhash;
+    feeTransaction.feePayer = new PublicKey(data.walletAddress);
+
+    // Have the user sign the transaction
+    const signedTransaction = await data.signTransaction(feeTransaction);
+
     // Send and confirm fee transaction
-    const signature = await sendAndConfirmTransaction(
-      connection,
-      feeTransaction,
-      [Keypair.fromSeed(new Uint8Array(32))] // This needs to be replaced with the actual signer
-    );
+    const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+    await connection.confirmTransaction(signature);
 
     console.log("Fee payment confirmed:", signature);
 
