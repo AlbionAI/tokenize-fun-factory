@@ -18,7 +18,11 @@ const queryClient = new QueryClient();
 
 // Use QuickNode if configured, otherwise fall back to Solana's public mainnet-beta
 const quickNodeEndpoint = import.meta.env.VITE_QUICKNODE_ENDPOINT;
-const endpoint = quickNodeEndpoint || clusterApiUrl("mainnet-beta");
+const endpoint = quickNodeEndpoint 
+  ? quickNodeEndpoint.startsWith('http') 
+    ? quickNodeEndpoint 
+    : `https://${quickNodeEndpoint}`
+  : clusterApiUrl("mainnet-beta");
 
 const wallets = [new PhantomWalletAdapter()];
 
