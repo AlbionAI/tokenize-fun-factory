@@ -25,7 +25,7 @@ export async function createToken(data: {
   try {
     // Initialize connection to Solana using QuickNode
     const connection = new Connection(QUICKNODE_ENDPOINT!, 'confirmed');
-    console.log("Using QuickNode endpoint:", QUICKNODE_ENDPOINT);
+    console.log("Starting token creation process...");
     
     // Calculate total fee in lamports (1 SOL = 1e9 lamports)
     let totalFee = 0.05; // Base fee
@@ -38,6 +38,17 @@ export async function createToken(data: {
     
     const feeInLamports = totalFee * 1e9;
 
+    // Check wallet balance
+    const balance = await connection.getBalance(new PublicKey(data.walletAddress));
+    const minimumRent = await connection.getMinimumBalanceForRentExemption(82);
+    const requiredBalance = feeInLamports + minimumRent;
+
+    if (balance < requiredBalance) {
+      throw new Error(`Insufficient balance. You need at least ${(requiredBalance / 1e9).toFixed(4)} SOL to create this token.`);
+    }
+
+    console.log("Step 1: Paying creation fee...");
+    
     // Create a fee transfer transaction
     const feeTransaction = new Transaction().add(
       SystemProgram.transfer({
@@ -69,8 +80,9 @@ export async function createToken(data: {
     // Create a temporary keypair for the mint operation
     const mintKeypair = Keypair.generate();
     
+    console.log("Step 2: Funding mint account...");
+    
     // Fund the mint keypair with the minimum rent exemption
-    const minimumRent = await connection.getMinimumBalanceForRentExemption(82);
     const fundMintAccountTx = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
@@ -83,8 +95,15 @@ export async function createToken(data: {
     fundMintAccountTx.feePayer = new PublicKey(data.walletAddress);
     
     const signedFundingTx = await data.signTransaction(fundMintAccountTx);
-    await connection.sendRawTransaction(signedFundingTx.serialize());
+    const fundingSignature = await connection.sendRawTransaction(signedFundingTx.serialize());
+    await connection.confirmTransaction({
+      signature: fundingSignature,
+      blockhash,
+      lastValidBlockHeight
+    });
 
+    console.log("Step 3: Creating token mint...");
+    
     // Create token mint with selected authorities
     const mint = await createMint(
       connection,
@@ -99,6 +118,8 @@ export async function createToken(data: {
 
     console.log("Created mint:", mint.toBase58());
 
+    console.log("Step 4: Creating token account...");
+    
     // Get the token account of the customer's wallet address, and if it does not exist, create it
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
@@ -113,6 +134,8 @@ export async function createToken(data: {
 
     console.log("Created token account:", tokenAccount.address.toBase58());
 
+    console.log("Step 5: Minting initial supply...");
+    
     // Convert supply string to number and mint tokens
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
     await mintTo(
@@ -127,7 +150,7 @@ export async function createToken(data: {
       TOKEN_PROGRAM_ID
     );
 
-    console.log("Minted tokens successfully");
+    console.log("Token creation completed successfully!");
 
     return {
       success: true,
