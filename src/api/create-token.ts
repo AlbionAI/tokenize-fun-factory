@@ -4,13 +4,13 @@ import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from '@solana/s
 import bs58 from 'bs58';
 
 // Your fee collector wallet address
-const FEE_COLLECTOR_WALLET = process.env.FEE_COLLECTOR_WALLET;
+const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
 
 // Base58 encoded secret key (this is more secure than raw bytes)
-const PAYER_SECRET_KEY = process.env.PAYER_SECRET_KEY;
+const PAYER_SECRET_KEY = import.meta.env.VITE_PAYER_SECRET_KEY;
 
 // QuickNode Endpoint (using dedicated mainnet endpoint)
-const QUICKNODE_ENDPOINT = process.env.QUICKNODE_ENDPOINT;
+const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
 
 export async function createToken(data: {
   name: string;
