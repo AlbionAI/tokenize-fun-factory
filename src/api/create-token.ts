@@ -74,11 +74,11 @@ export async function createToken(data: {
     const minimumRent = await connection.getMinimumBalanceForRentExemption(82);
     console.log("Minimum rent required:", minimumRent / 1e9, "SOL");
 
-    // Estimate total transaction fees for all operations
+    // Estimate transaction fees
     const estimatedTxFee = 15000; // 0.000015 SOL per transaction
 
-    // Calculate total required balance
-    const totalRequiredBalance = feeInLamports + minimumRent + (estimatedTxFee * 2); // Account for fees of both transactions
+    // Calculate total required balance (including ALL costs)
+    const totalRequiredBalance = feeInLamports + minimumRent + (estimatedTxFee * 2);
 
     // Check wallet balance
     const balance = await connection.getBalance(new PublicKey(data.walletAddress));
@@ -94,11 +94,12 @@ export async function createToken(data: {
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
 
     // First transaction: Send fee to collector
+    // Only deduct the minimumRent from the fee payment, leave transaction fees in wallet
     const feeTransaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
-        lamports: feeInLamports - minimumRent - (estimatedTxFee * 2), // Account for all future transaction fees
+        lamports: feeInLamports - minimumRent,
       })
     );
 
