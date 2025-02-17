@@ -11,6 +11,12 @@ interface TokenCreationStep3Props {
     symbol: string;
     supply: string;
     decimals: number;
+    authorities?: {
+      freezeAuthority: boolean;
+      mintAuthority: boolean;
+      updateAuthority: boolean;
+    };
+    creatorName?: string;
   };
   updateTokenData: (data: Partial<{
     name: string;
@@ -36,6 +42,22 @@ interface TokenCreationStep3Props {
 const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Props) => {
   const { publicKey } = useWallet();
   const [isCreating, setIsCreating] = useState(false);
+
+  const calculateFees = () => {
+    let totalFee = 0.05; // Base fee for token creation
+
+    // Add 0.1 SOL for each selected authority
+    if (tokenData.authorities) {
+      if (tokenData.authorities.freezeAuthority) totalFee += 0.1;
+      if (tokenData.authorities.mintAuthority) totalFee += 0.1;
+      if (tokenData.authorities.updateAuthority) totalFee += 0.1;
+    }
+
+    // Add 0.1 SOL if creator metadata is provided
+    if (tokenData.creatorName) totalFee += 0.1;
+
+    return totalFee;
+  };
 
   const handleCreateToken = async () => {
     if (!publicKey) {
@@ -71,6 +93,8 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
     }
   };
 
+  const totalFee = calculateFees();
+
   return (
     <div className="space-y-6">
       <div className="text-center">
@@ -89,12 +113,26 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
           </div>
         </div>
 
+        <div className="bg-secondary/50 p-4 rounded-lg">
+          <h3 className="font-semibold mb-2">Fee Breakdown</h3>
+          <div className="space-y-2">
+            <p>Base Fee: 0.05 SOL</p>
+            {tokenData.authorities?.freezeAuthority && <p>Freeze Authority: 0.1 SOL</p>}
+            {tokenData.authorities?.mintAuthority && <p>Mint Authority: 0.1 SOL</p>}
+            {tokenData.authorities?.updateAuthority && <p>Update Authority: 0.1 SOL</p>}
+            {tokenData.creatorName && <p>Creator Metadata: 0.1 SOL</p>}
+            <div className="border-t border-gray-600 mt-2 pt-2">
+              <p className="font-bold">Total Fee: {totalFee} SOL</p>
+            </div>
+          </div>
+        </div>
+
         <Button 
           onClick={handleCreateToken} 
           className="w-full"
           disabled={isCreating}
         >
-          {isCreating ? "Creating Token..." : "Create Token"}
+          {isCreating ? "Creating Token..." : `Create Token (${totalFee} SOL)`}
         </Button>
       </div>
     </div>
