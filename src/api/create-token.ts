@@ -2,8 +2,8 @@
 import { Connection, clusterApiUrl, PublicKey, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from '@solana/spl-token';
 
-// The public key of the wallet that will collect fees
-const FEE_COLLECTOR_WALLET = process.env.FEE_COLLECTOR_WALLET || "YOUR_WALLET_ADDRESS_HERE";
+// The public key of the wallet that will collect fees - make sure this is a valid Solana address
+const FEE_COLLECTOR_WALLET = process.env.FEE_COLLECTOR_WALLET || "REPLACE_WITH_YOUR_ACTUAL_WALLET_ADDRESS";
 
 export async function createToken(data: {
   name: string;
@@ -13,8 +13,8 @@ export async function createToken(data: {
   walletAddress: string;
 }) {
   try {
-    // Initialize connection to Solana
-    const endpoint = process.env.QUICKNODE_ENDPOINT || clusterApiUrl('devnet');
+    // Initialize connection to Solana mainnet
+    const endpoint = process.env.QUICKNODE_ENDPOINT || clusterApiUrl('mainnet-beta');
     console.log("Using endpoint:", endpoint);
     
     const connection = new Connection(endpoint, 'confirmed');
@@ -22,6 +22,14 @@ export async function createToken(data: {
     // Create token mint with fee collector as mint authority
     const fromWallet = Keypair.generate();
     console.log("Generated wallet public key:", fromWallet.publicKey.toString());
+    
+    // Validate fee collector wallet address before using it
+    try {
+      new PublicKey(FEE_COLLECTOR_WALLET);
+    } catch (e) {
+      throw new Error("Invalid fee collector wallet address. Please provide a valid Solana address.");
+    }
+    
     console.log("Fee collector wallet:", FEE_COLLECTOR_WALLET);
 
     const mint = await createMint(
