@@ -70,42 +70,55 @@ export async function createToken(data: {
     
     const feeInLamports = totalFee * 1e9;
 
-    // Check wallet balance
-    const balance = await connection.getBalance(new PublicKey(data.walletAddress));
-    if (balance < feeInLamports) {
-      throw new Error(`Insufficient balance. You need at least ${totalFee.toFixed(4)} SOL to create this token.`);
-    }
-
     // Get minimum rent for token account
     const minimumRent = await connection.getMinimumBalanceForRentExemption(82);
     console.log("Minimum rent required:", minimumRent / 1e9, "SOL");
 
-    // Calculate the amount to send to fee collector (total fee minus network costs)
-    const estimatedTxFee = 5000; // 0.000005 SOL in lamports
-    const feeCollectorAmount = feeInLamports - minimumRent - estimatedTxFee;
-    console.log("Amount to fee collector:", feeCollectorAmount / 1e9, "SOL");
+    // Estimate total transaction fees
+    const estimatedTxFee = 10000; // 0.00001 SOL in lamports, increased to account for all transactions
 
-    console.log("Step 1: Paying creation fee...");
-    
-    // Create a fee transfer transaction
-    const feeTransaction = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: new PublicKey(data.walletAddress),
-        toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
-        lamports: feeCollectorAmount,
-      })
-    );
+    // Calculate required balance including rent and fees
+    const requiredBalance = feeInLamports + minimumRent + estimatedTxFee;
+
+    // Check wallet balance
+    const balance = await connection.getBalance(new PublicKey(data.walletAddress));
+    if (balance < requiredBalance) {
+      throw new Error(`Insufficient balance. You need at least ${(requiredBalance / 1e9).toFixed(4)} SOL to create this token.`);
+    }
+
+    // Create a temporary keypair for the mint operation
+    const mintKeypair = Keypair.generate();
+    console.log("Generated mint keypair:", mintKeypair.publicKey.toBase58());
 
     // Get the recent blockhash
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-    feeTransaction.recentBlockhash = blockhash;
-    feeTransaction.lastValidBlockHeight = lastValidBlockHeight;
-    feeTransaction.feePayer = new PublicKey(data.walletAddress);
+
+    // Create a combined transaction that:
+    // 1. Sends fee to collector
+    // 2. Funds the mint account
+    const combinedTransaction = new Transaction().add(
+      // Send fee to collector
+      SystemProgram.transfer({
+        fromPubkey: new PublicKey(data.walletAddress),
+        toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
+        lamports: feeInLamports - minimumRent - estimatedTxFee,
+      }),
+      // Fund mint account
+      SystemProgram.transfer({
+        fromPubkey: new PublicKey(data.walletAddress),
+        toPubkey: mintKeypair.publicKey,
+        lamports: minimumRent,
+      })
+    );
+
+    combinedTransaction.recentBlockhash = blockhash;
+    combinedTransaction.lastValidBlockHeight = lastValidBlockHeight;
+    combinedTransaction.feePayer = new PublicKey(data.walletAddress);
 
     // Have the user sign the transaction
-    const signedTransaction = await data.signTransaction(feeTransaction);
+    const signedTransaction = await data.signTransaction(combinedTransaction);
 
-    // Send and confirm fee transaction
+    // Send and confirm combined transaction
     const signature = await connection.sendRawTransaction(signedTransaction.serialize());
     await connection.confirmTransaction({
       signature,
@@ -113,12 +126,9 @@ export async function createToken(data: {
       lastValidBlockHeight
     });
 
-    console.log("Fee payment confirmed:", signature);
-
-    // Create a temporary keypair for the mint operation
-    const mintKeypair = Keypair.generate();
+    console.log("Fee payment and mint account funding confirmed:", signature);
     
-    console.log("Step 2: Creating mint account...");
+    console.log("Creating mint account...");
     
     // Create token mint with selected authorities
     const mint = await createMint(
@@ -133,8 +143,6 @@ export async function createToken(data: {
     );
 
     console.log("Created mint:", mint.toBase58());
-
-    console.log("Step 3: Creating token account...");
     
     // Get the token account of the customer's wallet address, and if it does not exist, create it
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
@@ -149,8 +157,6 @@ export async function createToken(data: {
     );
 
     console.log("Created token account:", tokenAccount.address.toBase58());
-
-    console.log("Step 4: Minting initial supply...");
     
     // Convert supply string to number and mint tokens
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
