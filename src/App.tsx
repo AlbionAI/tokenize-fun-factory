@@ -16,10 +16,10 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-// Use Solana's public devnet endpoint by default, or QuickNode if configured
+// Use Solana's public mainnet-beta endpoint by default, or QuickNode if configured
 const endpoint = import.meta.env.VITE_QUICKNODE_ENDPOINT 
   ? `https://${import.meta.env.VITE_QUICKNODE_ENDPOINT}` 
-  : clusterApiUrl("devnet");
+  : clusterApiUrl("mainnet-beta");
 
 const wallets = [new PhantomWalletAdapter()];
 
