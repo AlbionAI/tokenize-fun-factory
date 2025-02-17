@@ -60,10 +60,8 @@ export async function createToken(data: {
 
     console.log("Fee payment confirmed:", signature);
 
-    // Generate a new keypair for the mint
-    const seed = new Uint8Array(32);
-    window.crypto.getRandomValues(seed);
-    const fromWallet = Keypair.fromSeed(seed);
+    // Generate a new keypair using a browser-compatible method
+    const fromWallet = Keypair.generate();
     
     console.log("Generated wallet public key:", fromWallet.publicKey.toString());
 
