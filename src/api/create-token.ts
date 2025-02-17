@@ -1,6 +1,9 @@
 
-import { Connection, clusterApiUrl, PublicKey, Keypair } from '@solana/web3.js';
+import { Connection, clusterApiUrl, PublicKey, Keypair, Transaction, SystemProgram, sendAndConfirmTransaction } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from '@solana/spl-token';
+
+// Your fee collector wallet address
+const FEE_COLLECTOR_WALLET = "EBTxkJvzBEfGJZMGAaFBqkw5EYsk7zRt1Z4aqHSmu8Qf";
 
 export async function createToken(data: {
   name: string;
@@ -8,6 +11,12 @@ export async function createToken(data: {
   supply: string;
   decimals: number;
   walletAddress: string;
+  authorities?: {
+    freezeAuthority: boolean;
+    mintAuthority: boolean;
+    updateAuthority: boolean;
+  };
+  creatorName?: string;
 }) {
   try {
     // Initialize connection to Solana mainnet
@@ -15,16 +24,45 @@ export async function createToken(data: {
     console.log("Using endpoint:", endpoint);
     
     const connection = new Connection(endpoint, 'confirmed');
+    
+    // Calculate total fee in lamports (1 SOL = 1e9 lamports)
+    let totalFee = 0.05; // Base fee
+    if (data.authorities) {
+      if (data.authorities.freezeAuthority) totalFee += 0.1;
+      if (data.authorities.mintAuthority) totalFee += 0.1;
+      if (data.authorities.updateAuthority) totalFee += 0.1;
+    }
+    if (data.creatorName) totalFee += 0.1;
+    
+    const feeInLamports = totalFee * 1e9;
 
-    // Create token mint without fee collector as authority
+    // Create a fee transfer transaction
+    const feeTransaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: new PublicKey(data.walletAddress),
+        toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
+        lamports: feeInLamports,
+      })
+    );
+
+    // Send and confirm fee transaction
+    const signature = await sendAndConfirmTransaction(
+      connection,
+      feeTransaction,
+      [Keypair.fromSeed(new Uint8Array(32))] // This needs to be replaced with the actual signer
+    );
+
+    console.log("Fee payment confirmed:", signature);
+
+    // Create token mint with selected authorities
     const fromWallet = Keypair.generate();
     console.log("Generated wallet public key:", fromWallet.publicKey.toString());
 
     const mint = await createMint(
       connection,
       fromWallet, // payer
-      fromWallet.publicKey, // mint authority
-      null, // freeze authority (null = no freeze authority)
+      data.authorities?.mintAuthority ? new PublicKey(data.walletAddress) : fromWallet.publicKey, // mint authority
+      data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null, // freeze authority
       data.decimals
     );
 
@@ -57,6 +95,8 @@ export async function createToken(data: {
       success: true,
       tokenAddress: mint.toBase58(),
       ownerAddress: fromWallet.publicKey.toBase58(),
+      feeAmount: totalFee,
+      feeTransaction: signature,
     };
   } catch (error) {
     console.error('Error in createToken:', error);

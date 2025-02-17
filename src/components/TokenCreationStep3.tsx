@@ -78,7 +78,7 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
 
       toast({
         title: "Success!",
-        description: `Token created successfully! Address: ${result.tokenAddress}`,
+        description: `Token created successfully! Fee paid: ${result.feeAmount} SOL. Token address: ${result.tokenAddress}`,
       });
 
     } catch (error) {
@@ -110,6 +110,20 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
             <p>Symbol: {tokenData.symbol}</p>
             <p>Supply: {tokenData.supply}</p>
             <p>Decimals: {tokenData.decimals}</p>
+            {tokenData.authorities && (
+              <div className="mt-2">
+                <p className="font-semibold">Selected Authorities:</p>
+                {tokenData.authorities.freezeAuthority && <p>• Freeze Authority</p>}
+                {tokenData.authorities.mintAuthority && <p>• Mint Authority</p>}
+                {tokenData.authorities.updateAuthority && <p>• Update Authority</p>}
+              </div>
+            )}
+            {tokenData.creatorName && (
+              <div className="mt-2">
+                <p className="font-semibold">Creator Information:</p>
+                <p>• Creator Name: {tokenData.creatorName}</p>
+              </div>
+            )}
           </div>
         </div>
 
