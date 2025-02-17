@@ -16,16 +16,9 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-// Add debug logging for QuickNode endpoint
-const quickNodeEndpoint = import.meta.env.VITE_QUICKNODE_ENDPOINT;
-console.log("QuickNode Endpoint Config:", {
-  exists: !!quickNodeEndpoint,
-  value: quickNodeEndpoint || 'Not configured'
-});
-
 // Use QuickNode if configured, otherwise fall back to Solana's public mainnet-beta
+const quickNodeEndpoint = import.meta.env.VITE_QUICKNODE_ENDPOINT;
 const endpoint = quickNodeEndpoint || clusterApiUrl("mainnet-beta");
-console.log("Using Solana endpoint:", endpoint);
 
 const wallets = [new PhantomWalletAdapter()];
 
