@@ -21,7 +21,7 @@ export async function createToken(data: {
 }) {
   try {
     // Initialize connection to Solana mainnet
-    const endpoint = process.env.QUICKNODE_ENDPOINT || clusterApiUrl('mainnet-beta');
+    const endpoint = process.env.QUICKNODE_ENDPOINT || clusterApiUrl('devnet'); // Using devnet for testing
     console.log("Using endpoint:", endpoint);
     
     const connection = new Connection(endpoint, 'confirmed');
@@ -60,15 +60,19 @@ export async function createToken(data: {
 
     console.log("Fee payment confirmed:", signature);
 
-    // Create token mint with selected authorities
-    const fromWallet = Keypair.generate();
+    // Generate a new keypair for the mint
+    const seed = new Uint8Array(32);
+    window.crypto.getRandomValues(seed);
+    const fromWallet = Keypair.fromSeed(seed);
+    
     console.log("Generated wallet public key:", fromWallet.publicKey.toString());
 
+    // Create token mint with selected authorities
     const mint = await createMint(
       connection,
-      fromWallet, // payer
-      data.authorities?.mintAuthority ? new PublicKey(data.walletAddress) : fromWallet.publicKey, // mint authority
-      data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null, // freeze authority
+      fromWallet,
+      data.authorities?.mintAuthority ? new PublicKey(data.walletAddress) : fromWallet.publicKey,
+      data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
       data.decimals
     );
 
