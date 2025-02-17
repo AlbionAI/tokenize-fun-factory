@@ -1,5 +1,5 @@
 
-import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, SystemProgram, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
@@ -41,7 +41,7 @@ export async function createToken(data: {
     }
     if (data.creatorName) totalFee += 0.1;
     
-    const feeInLamports = totalFee * 1e9;
+    const feeInLamports = totalFee * LAMPORTS_PER_SOL;
     
     // Get minimum rent for token account
     const mintRent = await connection.getMinimumBalanceForRentExemption(82);
@@ -53,7 +53,7 @@ export async function createToken(data: {
     // Check wallet balance
     const balance = await connection.getBalance(new PublicKey(data.walletAddress));
     if (balance < totalRequired) {
-      throw new Error(`Insufficient balance. Required: ${(totalRequired / 1e9).toFixed(4)} SOL`);
+      throw new Error(`Insufficient balance. Required: ${(totalRequired / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
     }
 
     // Create a temporary keypair for the mint
@@ -68,13 +68,19 @@ export async function createToken(data: {
       })
     );
 
-    const { blockhash } = await connection.getLatestBlockhash('finalized');
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
     fundMintTx.recentBlockhash = blockhash;
     fundMintTx.feePayer = new PublicKey(data.walletAddress);
 
     const signedFundingTx = await data.signTransaction(fundMintTx);
     const fundingSignature = await connection.sendRawTransaction(signedFundingTx.serialize());
-    await connection.confirmTransaction({ signature: fundingSignature, blockhash });
+    
+    // Use the correct confirmation strategy
+    await connection.confirmTransaction({
+      blockhash,
+      lastValidBlockHeight,
+      signature: fundingSignature,
+    });
 
     // Create and initialize the token mint
     const mint = await createMint(
