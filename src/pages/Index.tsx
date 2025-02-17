@@ -26,6 +26,11 @@ const Index = () => {
     discord: "",
     creatorName: "",
     creatorWebsite: "",
+    authorities: {
+      freezeAuthority: false,
+      mintAuthority: false,
+      updateAuthority: false
+    }
   });
 
   const handleNextStep = () => {
@@ -45,7 +50,7 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white p-8">
+    <div className="min-h-screen bg-[#0D1117] text-white p-8">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12 space-y-4 animate-fade-in">
           <h1 className="text-4xl font-bold">Create Your Solana Token</h1>
@@ -56,9 +61,9 @@ const Index = () => {
           <StepIndicator currentStep={currentStep} totalSteps={3} />
         </div>
 
-        <Card className="bg-gray-800/50 backdrop-blur-lg border-gray-700 p-8 rounded-xl shadow-xl">
+        <Card className="bg-[#1B2030]/95 backdrop-blur-lg border-[#2A2F45] p-8 rounded-xl shadow-xl">
           <div className="mb-6 flex justify-end">
-            <WalletMultiButton className="!bg-purple-600 hover:!bg-purple-700 transition-colors" />
+            <WalletMultiButton className="!bg-[#00C097] hover:!bg-[#00A080] transition-colors" />
           </div>
 
           {!connected ? (
@@ -83,14 +88,14 @@ const Index = () => {
                   <Button
                     onClick={handlePrevStep}
                     variant="outline"
-                    className="bg-transparent border-gray-700 hover:bg-gray-800"
+                    className="bg-transparent border-[#2A2F45] hover:bg-[#2A2F45] text-white"
                   >
                     Back
                   </Button>
                 )}
                 <Button
                   onClick={currentStep === 3 ? () => console.log("Create token", tokenData) : handleNextStep}
-                  className="ml-auto bg-emerald-500 hover:bg-emerald-600"
+                  className="ml-auto bg-[#00C097] hover:bg-[#00A080]"
                 >
                   {currentStep === 3 ? "Create Token" : "Next"}
                 </Button>
