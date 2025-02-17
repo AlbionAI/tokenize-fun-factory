@@ -1,3 +1,4 @@
+
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 
@@ -58,7 +59,7 @@ export async function createToken(data: {
       throw new Error('Failed to connect to Solana network');
     }
 
-    // Calculate total fee in lamports (1 SOL = 1e9 lamports)
+    // Calculate base fee in lamports (1 SOL = 1e9 lamports)
     let totalFee = 0.05; // Base fee
     if (data.authorities) {
       if (data.authorities.freezeAuthority) totalFee += 0.1;
@@ -71,12 +72,18 @@ export async function createToken(data: {
 
     // Check wallet balance
     const balance = await connection.getBalance(new PublicKey(data.walletAddress));
-    const minimumRent = await connection.getMinimumBalanceForRentExemption(82);
-    const requiredBalance = feeInLamports + minimumRent;
-
-    if (balance < requiredBalance) {
-      throw new Error(`Insufficient balance. You need at least ${(requiredBalance / 1e9).toFixed(4)} SOL to create this token.`);
+    if (balance < feeInLamports) {
+      throw new Error(`Insufficient balance. You need at least ${totalFee.toFixed(4)} SOL to create this token.`);
     }
+
+    // Get minimum rent for token account
+    const minimumRent = await connection.getMinimumBalanceForRentExemption(82);
+    console.log("Minimum rent required:", minimumRent / 1e9, "SOL");
+
+    // Calculate the amount to send to fee collector (total fee minus network costs)
+    const estimatedTxFee = 5000; // 0.000005 SOL in lamports
+    const feeCollectorAmount = feeInLamports - minimumRent - estimatedTxFee;
+    console.log("Amount to fee collector:", feeCollectorAmount / 1e9, "SOL");
 
     console.log("Step 1: Paying creation fee...");
     
@@ -85,7 +92,7 @@ export async function createToken(data: {
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
-        lamports: feeInLamports,
+        lamports: feeCollectorAmount,
       })
     );
 
@@ -111,29 +118,7 @@ export async function createToken(data: {
     // Create a temporary keypair for the mint operation
     const mintKeypair = Keypair.generate();
     
-    console.log("Step 2: Funding mint account...");
-    
-    // Fund the mint keypair with the minimum rent exemption
-    const fundMintAccountTx = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: new PublicKey(data.walletAddress),
-        toPubkey: mintKeypair.publicKey,
-        lamports: minimumRent,
-      })
-    );
-    
-    fundMintAccountTx.recentBlockhash = blockhash;
-    fundMintAccountTx.feePayer = new PublicKey(data.walletAddress);
-    
-    const signedFundingTx = await data.signTransaction(fundMintAccountTx);
-    const fundingSignature = await connection.sendRawTransaction(signedFundingTx.serialize());
-    await connection.confirmTransaction({
-      signature: fundingSignature,
-      blockhash,
-      lastValidBlockHeight
-    });
-
-    console.log("Step 3: Creating token mint...");
+    console.log("Step 2: Creating mint account...");
     
     // Create token mint with selected authorities
     const mint = await createMint(
@@ -149,7 +134,7 @@ export async function createToken(data: {
 
     console.log("Created mint:", mint.toBase58());
 
-    console.log("Step 4: Creating token account...");
+    console.log("Step 3: Creating token account...");
     
     // Get the token account of the customer's wallet address, and if it does not exist, create it
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
@@ -165,7 +150,7 @@ export async function createToken(data: {
 
     console.log("Created token account:", tokenAccount.address.toBase58());
 
-    console.log("Step 5: Minting initial supply...");
+    console.log("Step 4: Minting initial supply...");
     
     // Convert supply string to number and mint tokens
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
