@@ -5,7 +5,15 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 
-// Polyfill for Metaplex
+// Polyfill for process
+window.process = {
+  ...window.process,
+  env: { NODE_DEBUG: '' },
+  browser: true,
+  version: '',
+};
+
+// Polyfill for Buffer
 if (!window.Buffer) {
   window.Buffer = Buffer;
 }
