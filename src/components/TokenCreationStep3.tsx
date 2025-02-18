@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Button } from '@/components/ui/button';
@@ -51,19 +50,17 @@ const TokenCreationStep3 = ({ tokenData, updateTokenData }: TokenCreationStep3Pr
   const [showCreatorInfo, setShowCreatorInfo] = useState(!!tokenData.creatorName);
 
   const calculateFees = () => {
-    let totalFee = 0.05; // Base fee for token creation
+    let totalFee = 0.05;
 
-    // Add 0.1 SOL for each selected authority
     if (tokenData.authorities) {
       if (tokenData.authorities.freezeAuthority) totalFee += 0.1;
       if (tokenData.authorities.mintAuthority) totalFee += 0.1;
       if (tokenData.authorities.updateAuthority) totalFee += 0.1;
     }
 
-    // Add 0.1 SOL if creator metadata is provided
     if (tokenData.creatorName) totalFee += 0.1;
 
-    return totalFee;
+    return Number(totalFee.toFixed(2));
   };
 
   const handleCreateToken = async () => {
