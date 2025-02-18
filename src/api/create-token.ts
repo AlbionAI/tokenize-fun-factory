@@ -1,6 +1,9 @@
-
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { 
+  Metadata,
+  createCreateMetadataAccountV3Instruction,
+} from '@metaplex-foundation/mpl-token-metadata';
 
 // Your fee collector wallet address
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
@@ -62,10 +65,12 @@ export async function createToken(data: {
     // Calculate all required costs
     const MINT_SPACE = 82; // Size of mint account
     const TOKEN_ACCOUNT_SPACE = 165; // Size of token account
+    const METADATA_SPACE = 679; // Size needed for metadata account
 
     // Get rent exemptions
     const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SPACE);
     const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE);
+    const metadataRent = await connection.getMinimumBalanceForRentExemption(METADATA_SPACE);
     
     // Calculate service fee
     let serviceFee = 0.05; // Base fee
@@ -82,12 +87,13 @@ export async function createToken(data: {
     const estimatedTxFees = 5000 * 3;
 
     // Calculate total required balance
-    const totalRequired = serviceFeeInLamports + mintRent + tokenAccountRent + estimatedTxFees;
+    const totalRequired = serviceFeeInLamports + mintRent + tokenAccountRent + estimatedTxFees + metadataRent;
 
     console.log("Cost breakdown (in lamports):", {
       serviceFee: serviceFeeInLamports,
       mintRent,
       tokenAccountRent,
+      metadataRent,
       estimatedTxFees,
       totalRequired
     });
@@ -102,6 +108,7 @@ export async function createToken(data: {
         `- Service fee: ${(serviceFee).toFixed(4)} SOL\n` +
         `- Mint account rent: ${(mintRent / 1e9).toFixed(4)} SOL\n` +
         `- Token account rent: ${(tokenAccountRent / 1e9).toFixed(4)} SOL\n` +
+        `- Metadata account rent: ${(metadataRent / 1e9).toFixed(4)} SOL\n` +
         `- Transaction fees: ${(estimatedTxFees / 1e9).toFixed(4)} SOL`
       );
     }
@@ -167,7 +174,7 @@ export async function createToken(data: {
     const mint = await createMint(
       connection,
       mintKeypair,
-      new PublicKey(data.walletAddress), // The customer's wallet is the mint authority
+      new PublicKey(data.walletAddress),
       data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
       data.decimals,
       undefined,
@@ -176,6 +183,61 @@ export async function createToken(data: {
     );
 
     console.log("Created mint:", mint.toBase58());
+
+    // Create metadata
+    console.log("Creating token metadata...");
+    
+    const [metadataAddress] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("metadata"),
+        new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").toBuffer(),
+        mint.toBuffer(),
+      ],
+      new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
+    );
+
+    const metadataInstruction = createCreateMetadataAccountV3Instruction(
+      {
+        metadata: metadataAddress,
+        mint: mint,
+        mintAuthority: new PublicKey(data.walletAddress),
+        payer: new PublicKey(data.walletAddress),
+        updateAuthority: new PublicKey(data.walletAddress),
+      },
+      {
+        createMetadataAccountArgsV3: {
+          data: {
+            name: data.name,
+            symbol: data.symbol,
+            uri: "", // You can add a URI to your token's metadata JSON here
+            sellerFeeBasisPoints: 0,
+            creators: data.creatorName ? [{
+              address: new PublicKey(data.walletAddress),
+              verified: false,
+              share: 100,
+            }] : null,
+            collection: null,
+            uses: null,
+          },
+          isMutable: true,
+          collectionDetails: null,
+        },
+      }
+    );
+
+    const metadataTransaction = new Transaction().add(metadataInstruction);
+    metadataTransaction.feePayer = new PublicKey(data.walletAddress);
+    metadataTransaction.recentBlockhash = blockhash;
+
+    const signedMetadataTransaction = await data.signTransaction(metadataTransaction);
+    const metadataSignature = await connection.sendRawTransaction(signedMetadataTransaction.serialize());
+    await connection.confirmTransaction({
+      signature: metadataSignature,
+      blockhash,
+      lastValidBlockHeight
+    });
+
+    console.log("Created token metadata:", metadataAddress.toBase58());
 
     console.log("Step 4: Creating token account...");
     
@@ -214,6 +276,7 @@ export async function createToken(data: {
     return {
       success: true,
       tokenAddress: mint.toBase58(),
+      metadataAddress: metadataAddress.toBase58(),
       feeAmount: serviceFee,
       feeTransaction: signature,
     };
