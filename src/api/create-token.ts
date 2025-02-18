@@ -1,4 +1,3 @@
-
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { 
@@ -68,24 +67,14 @@ const createMetadataInstruction = (
   let creators: Creator[] | null = null;
   if (creatorAddress) {
     creators = [{
-      address: new PublicKey(creatorAddress),
+      address: creatorAddress,
       verified: false,
       share: 100
     }];
   }
 
-  const metadataData = {
-    name,
-    symbol,
-    uri: '',
-    sellerFeeBasisPoints: 0,
-    creators,
-    collection: null,
-    uses: null
-  };
-
   const creatorsLayout = borsh.struct([
-    borsh.publicKey('address'),
+    borsh.str('address'),
     borsh.bool('verified'),
     borsh.u8('share'),
   ]);
