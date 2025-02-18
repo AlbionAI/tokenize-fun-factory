@@ -1,6 +1,6 @@
-
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { DataV2, CreateMetadataAccountV3InstructionAccounts, CreateMetadataAccountV3InstructionArgs, createCreateMetadataAccountV3Instruction } from '@metaplex-foundation/mpl-token-metadata';
 import { Buffer } from 'buffer';
 
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
@@ -52,124 +52,52 @@ const createMetadataInstruction = (
   symbol: string,
   creatorAddress?: string
 ) => {
-  // Create metadata JSON
-  const uri = JSON.stringify({
+  const data: DataV2 = {
     name,
     symbol,
-    description: `${name} token`,
-    image: '', // Optional: Add image URL if available
-    attributes: [],
-    properties: {
-      files: [],
-      creators: creatorAddress ? [{
-        address: creatorAddress,
-        verified: true,
-        share: 100
-      }] : []
-    }
-  });
+    uri: '',
+    sellerFeeBasisPoints: 0,
+    creators: creatorAddress ? [
+      {
+        address: new PublicKey(creatorAddress),
+        verified: false,
+        share: 100,
+      },
+    ] : null,
+    collection: null,
+    uses: null,
+  };
 
-  // Calculate buffer size (fixed size + variable parts)
-  const nameBuffer = Buffer.from(name);
-  const symbolBuffer = Buffer.from(symbol);
-  const uriBuffer = Buffer.from(uri);
-  
-  const bufferSize = 1 + // Instruction discriminator
-    32 + // Name max length
-    10 + // Symbol max length
-    200 + // URI max length
-    2 + // Seller fee basis points (u16)
-    1 + // Creator present bool
-    (creatorAddress ? 34 : 0); // Creator data if present
+  const accounts: CreateMetadataAccountV3InstructionAccounts = {
+    metadata,
+    mint,
+    mintAuthority,
+    payer,
+    updateAuthority,
+  };
 
-  const buffer = Buffer.alloc(bufferSize);
-  let offset = 0;
-
-  // Write instruction discriminator (create metadata instruction)
-  buffer.writeUInt8(33, offset);
-  offset += 1;
-
-  // Write name with length prefix
-  nameBuffer.copy(buffer, offset, 0, Math.min(nameBuffer.length, 32));
-  offset += 32;
-
-  // Write symbol with length prefix
-  symbolBuffer.copy(buffer, offset, 0, Math.min(symbolBuffer.length, 10));
-  offset += 10;
-
-  // Write URI with length prefix
-  uriBuffer.copy(buffer, offset, 0, Math.min(uriBuffer.length, 200));
-  offset += 200;
-
-  // Write seller fee basis points (0)
-  buffer.writeUInt16LE(0, offset);
-  offset += 2;
-
-  // Write creator presence
-  buffer.writeUInt8(creatorAddress ? 1 : 0, offset);
-  offset += 1;
-
-  // Write creator data if present
-  if (creatorAddress) {
-    const creatorPubkey = new PublicKey(creatorAddress);
-    creatorPubkey.toBuffer().copy(buffer, offset);
-    offset += 32;
-    buffer.writeUInt8(1, offset); // verified = true
-    offset += 1;
-    buffer.writeUInt8(100, offset); // share = 100%
-  }
+  const args: CreateMetadataAccountV3InstructionArgs = {
+    createMetadataAccountArgsV3: {
+      data,
+      isMutable: true,
+      collectionDetails: null,
+    },
+  };
 
   const transaction = new Transaction();
   
-  // Add compute budget instruction
   transaction.add(
     ComputeBudgetProgram.setComputeUnitLimit({
       units: 400000
     })
   );
 
-  // Add metadata instruction
-  transaction.add({
-    keys: [
-      {
-        pubkey: metadata,
-        isSigner: false,
-        isWritable: true,
-      },
-      {
-        pubkey: mint,
-        isSigner: false,
-        isWritable: false,
-      },
-      {
-        pubkey: mintAuthority,
-        isSigner: true,
-        isWritable: false,
-      },
-      {
-        pubkey: payer,
-        isSigner: true,
-        isWritable: true,
-      },
-      {
-        pubkey: updateAuthority,
-        isSigner: false,
-        isWritable: false,
-      },
-      {
-        pubkey: SystemProgram.programId,
-        isSigner: false,
-        isWritable: false,
-      },
-      {
-        pubkey: TOKEN_METADATA_PROGRAM_ID,
-        isSigner: false,
-        isWritable: false,
-      },
-    ],
-    programId: TOKEN_METADATA_PROGRAM_ID,
-    data: buffer,
-  });
+  const createMetadataInstruction = createCreateMetadataAccountV3Instruction(
+    accounts,
+    args
+  );
+
+  transaction.add(createMetadataInstruction);
 
   return transaction;
 };
@@ -216,7 +144,6 @@ export async function createToken(data: {
     const mintRent = Math.max(calculatedMintRent, MIN_MINT_RENT_LAMPORTS);
     const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE);
     
-    // Calculate base fee in SOL
     let baseFee = 0.05;
     if (data.authorities) {
       if (data.authorities.freezeAuthority) baseFee += 0.1;
@@ -225,7 +152,6 @@ export async function createToken(data: {
     }
     if (data.creatorName) baseFee += 0.1;
     
-    // Round to 2 decimal places first, then convert to lamports
     baseFee = Number(baseFee.toFixed(2));
     const serviceFeeInLamports = Math.floor(baseFee * LAMPORTS_PER_SOL);
 
