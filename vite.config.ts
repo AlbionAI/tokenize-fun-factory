@@ -23,7 +23,5 @@ export default defineConfig(({ mode }) => ({
   define: {
     'process.env': {},
     'process.env.NODE_DEBUG': JSON.stringify(''),
-    'process.browser': true,
-    'process.version': JSON.stringify(process.version),
   },
 }));

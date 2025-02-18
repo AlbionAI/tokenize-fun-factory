@@ -6,11 +6,17 @@ import App from './App';
 import './index.css';
 
 // Polyfill for process
+declare global {
+  interface Window {
+    process: {
+      env: { [key: string]: string | undefined };
+    };
+  }
+}
+
 window.process = {
   ...window.process,
-  env: { NODE_DEBUG: '' },
-  browser: true,
-  version: '',
+  env: { NODE_DEBUG: '' }
 };
 
 // Polyfill for Buffer
