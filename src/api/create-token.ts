@@ -1,6 +1,7 @@
+
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { Metaplex, walletAdapterIdentity, keypairIdentity } from '@metaplex-foundation/js';
+import { Metaplex, walletAdapterIdentity } from '@metaplex-foundation/js';
 
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
 const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
@@ -46,17 +47,16 @@ export async function createToken(data: {
       throw new Error('Failed to connect to Solana network');
     }
 
-    // Initialize Metaplex with keypair identity for the mint operation
-    const mintKeypair = Keypair.generate();
-    const metaplex = Metaplex.make(connection)
-      .use(keypairIdentity(mintKeypair))
-      .use(walletAdapterIdentity({
+    // Initialize Metaplex with wallet adapter
+    const metaplex = Metaplex.make(connection).use(
+      walletAdapterIdentity({
         publicKey: new PublicKey(data.walletAddress),
         signTransaction: data.signTransaction,
         signAllTransactions: async (txs) => {
           return Promise.all(txs.map(tx => data.signTransaction(tx)));
         },
-      }));
+      })
+    );
     
     // Calculate base fee in SOL
     let baseFee = 0.05;
@@ -128,47 +128,36 @@ export async function createToken(data: {
 
     console.log("Fee payment confirmed:", feeSignature);
 
-    // Create the mint account
-    const mint = await createMint(
-      connection,
-      mintKeypair,
-      new PublicKey(data.walletAddress),
-      data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
-      data.decimals,
-      undefined,
-      undefined,
-      TOKEN_PROGRAM_ID
-    );
-
-    // Create metadata using Metaplex
-    const { nft } = await metaplex.nfts().create({
-      uri: 'https://arweave.net/',
+    // Create the mint and metadata
+    const { token } = await metaplex.tokens().createV1({
+      mintAuthority: new PublicKey(data.walletAddress),
+      freezeAuthority: data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
+      decimals: data.decimals,
       name: data.name,
       symbol: data.symbol,
+      uri: 'https://arweave.net/',
       sellerFeeBasisPoints: 0,
-      useNewMint: mintKeypair,
-      tokenOwner: new PublicKey(data.walletAddress),
       creators: data.creatorName ? [{
         address: new PublicKey(data.walletAddress),
         share: 100,
       }] : undefined,
     });
 
-    console.log("Metadata created:", nft);
+    console.log("Token and metadata created:", token.mint.address.toBase58());
 
     // Create token account and mint tokens
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
-      mintKeypair,
-      mint,
+      Keypair.generate(), // temporary keypair for the transaction
+      token.mint.address,
       new PublicKey(data.walletAddress)
     );
 
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
     await mintTo(
       connection,
-      mintKeypair,
-      mint,
+      Keypair.generate(), // temporary keypair for the transaction
+      token.mint.address,
       tokenAccount.address,
       new PublicKey(data.walletAddress),
       supplyNumber
@@ -178,7 +167,7 @@ export async function createToken(data: {
 
     return {
       success: true,
-      tokenAddress: mint.toBase58(),
+      tokenAddress: token.mint.address.toBase58(),
       feeAmount: baseFee,
       feeTransaction: feeSignature,
     };
