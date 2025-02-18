@@ -52,7 +52,7 @@ const createMetadataInstruction = (
   symbol: string,
   creatorAddress?: string
 ) => {
-  // Create metadata JSON following Metaplex standard
+  // Create metadata JSON
   const uri = JSON.stringify({
     name,
     symbol,
@@ -69,38 +69,39 @@ const createMetadataInstruction = (
     }
   });
 
-  // Calculate buffer size
-  const creatorSize = creatorAddress ? 34 : 0; // 32 (pubkey) + 1 (verified) + 1 (share)
-  const bufferSize = 1 + 32 + 10 + 200 + 2 + 1 + creatorSize;
+  // Calculate buffer size (fixed size + variable parts)
+  const nameBuffer = Buffer.from(name);
+  const symbolBuffer = Buffer.from(symbol);
+  const uriBuffer = Buffer.from(uri);
+  
+  const bufferSize = 1 + // Instruction discriminator
+    32 + // Name max length
+    10 + // Symbol max length
+    200 + // URI max length
+    2 + // Seller fee basis points (u16)
+    1 + // Creator present bool
+    (creatorAddress ? 34 : 0); // Creator data if present
+
   const buffer = Buffer.alloc(bufferSize);
   let offset = 0;
 
-  // Write instruction discriminator (33 for CreateMetadataAccountV3)
+  // Write instruction discriminator (create metadata instruction)
   buffer.writeUInt8(33, offset);
   offset += 1;
 
-  // Write name (padded to 32 bytes)
-  const nameBytes = Buffer.from(name);
-  const paddedName = Buffer.alloc(32);
-  nameBytes.copy(paddedName, 0, 0, Math.min(nameBytes.length, 32));
-  paddedName.copy(buffer, offset);
+  // Write name with length prefix
+  nameBuffer.copy(buffer, offset, 0, Math.min(nameBuffer.length, 32));
   offset += 32;
 
-  // Write symbol (padded to 10 bytes)
-  const symbolBytes = Buffer.from(symbol);
-  const paddedSymbol = Buffer.alloc(10);
-  symbolBytes.copy(paddedSymbol, 0, 0, Math.min(symbolBytes.length, 10));
-  paddedSymbol.copy(buffer, offset);
+  // Write symbol with length prefix
+  symbolBuffer.copy(buffer, offset, 0, Math.min(symbolBuffer.length, 10));
   offset += 10;
 
-  // Write uri (padded to 200 bytes)
-  const uriBytes = Buffer.from(uri);
-  const paddedUri = Buffer.alloc(200);
-  uriBytes.copy(paddedUri, 0, 0, Math.min(uriBytes.length, 200));
-  paddedUri.copy(buffer, offset);
+  // Write URI with length prefix
+  uriBuffer.copy(buffer, offset, 0, Math.min(uriBuffer.length, 200));
   offset += 200;
 
-  // Write seller fee basis points (u16)
+  // Write seller fee basis points (0)
   buffer.writeUInt16LE(0, offset);
   offset += 2;
 
@@ -115,17 +116,19 @@ const createMetadataInstruction = (
     offset += 32;
     buffer.writeUInt8(1, offset); // verified = true
     offset += 1;
-    buffer.writeUInt8(100, offset); // share percentage
+    buffer.writeUInt8(100, offset); // share = 100%
   }
 
   const transaction = new Transaction();
   
+  // Add compute budget instruction
   transaction.add(
     ComputeBudgetProgram.setComputeUnitLimit({
       units: 400000
     })
   );
 
+  // Add metadata instruction
   transaction.add({
     keys: [
       {
@@ -150,7 +153,7 @@ const createMetadataInstruction = (
       },
       {
         pubkey: updateAuthority,
-        isSigner: true,
+        isSigner: false,
         isWritable: false,
       },
       {
