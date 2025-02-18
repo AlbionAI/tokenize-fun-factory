@@ -13,19 +13,13 @@ const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzj
 
 // Ensure the endpoint starts with https://
 const getFormattedEndpoint = (endpoint: string | undefined) => {
-  console.log("Configuring endpoint with:", endpoint);
-  
   if (!endpoint) {
-    console.error("QuickNode endpoint is not configured in environment variables");
     throw new Error('QuickNode endpoint is not configured');
   }
   
-  const formattedEndpoint = !endpoint.startsWith('http://') && !endpoint.startsWith('https://')
+  return !endpoint.startsWith('http://') && !endpoint.startsWith('https://')
     ? `https://${endpoint}`
     : endpoint;
-    
-  console.log("Using formatted endpoint:", formattedEndpoint);
-  return formattedEndpoint;
 };
 
 // Function to derive metadata PDA
@@ -136,8 +130,7 @@ export async function createToken(data: {
 
     // Test connection
     try {
-      const version = await connection.getVersion();
-      console.log("Successfully connected to Solana. Version:", version);
+      await connection.getVersion();
     } catch (error) {
       console.error("Failed to connect to Solana:", error);
       throw new Error('Failed to connect to Solana network');
@@ -175,7 +168,7 @@ export async function createToken(data: {
     const totalRequired = serviceFeeInLamports + 
                          mintRent + 
                          tokenAccountRent + 
-                         METADATA_REQUIRED_LAMPORTS +  // Use exact required amount
+                         METADATA_REQUIRED_LAMPORTS +
                          estimatedTxFees;
 
     console.log("Cost breakdown (in lamports):", {
@@ -282,8 +275,6 @@ export async function createToken(data: {
       blockhash,
       lastValidBlockHeight
     });
-
-    console.log("Step 3: Creating token mint...");
     
     // Create token mint with selected authorities
     const mint = await createMint(
@@ -296,12 +287,8 @@ export async function createToken(data: {
       undefined,
       TOKEN_PROGRAM_ID
     );
-
-    console.log("Created mint:", mint.toBase58());
-
-    // Create metadata
-    console.log("Creating token metadata...");
     
+    // Create metadata
     const metadataInstruction = createMetadataInstruction(
       metadataAddress,
       mint,
@@ -323,10 +310,6 @@ export async function createToken(data: {
       blockhash,
       lastValidBlockHeight
     });
-
-    console.log("Created token metadata:", metadataAddress.toBase58());
-
-    console.log("Step 4: Creating token account...");
     
     // Get the token account of the customer's wallet address, and if it does not exist, create it
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
@@ -340,10 +323,6 @@ export async function createToken(data: {
       TOKEN_PROGRAM_ID
     );
 
-    console.log("Created token account:", tokenAccount.address.toBase58());
-
-    console.log("Step 5: Minting initial supply...");
-    
     // Convert supply string to number and mint tokens
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
     await mintTo(
@@ -368,7 +347,7 @@ export async function createToken(data: {
       feeTransaction: signature,
     };
   } catch (error) {
-    console.error('Error in createToken:', error);
+    console.error('Error in createToken:', error instanceof Error ? error.message : 'Unknown error');
     throw error;
   }
 }
