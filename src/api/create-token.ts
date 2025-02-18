@@ -118,21 +118,12 @@ export async function createToken(data: {
   creatorName?: string;
 }) {
   try {
-    console.log("Starting token creation with data:", {
-      ...data,
-      walletAddress: data.walletAddress.substring(0, 4) + '...' // truncate for privacy
-    });
-
-    // Initialize connection to Solana using QuickNode with properly formatted endpoint
     const formattedEndpoint = getFormattedEndpoint(QUICKNODE_ENDPOINT);
-    console.log("Initializing Solana connection with endpoint");
     const connection = new Connection(formattedEndpoint, 'confirmed');
 
-    // Test connection
     try {
       await connection.getVersion();
     } catch (error) {
-      console.error("Failed to connect to Solana:", error);
       throw new Error('Failed to connect to Solana network');
     }
 
@@ -141,10 +132,10 @@ export async function createToken(data: {
     const TOKEN_ACCOUNT_SPACE = 165;
     const METADATA_SPACE = 679;
     
-    // The exact amount needed for metadata (corrected from 1461600 to 1461680)
-    const METADATA_REQUIRED_LAMPORTS = 1461680;
+    // Calculate metadata rent exemption directly from connection
+    const metadataRentExemption = await connection.getMinimumBalanceForRentExemption(METADATA_SPACE);
     
-    // Get rent exemptions
+    // Get other rent exemptions
     const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SPACE);
     const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE);
     
@@ -164,21 +155,12 @@ export async function createToken(data: {
     const NUM_TRANSACTIONS = 4;
     const estimatedTxFees = TX_FEE * NUM_TRANSACTIONS;
 
-    // Calculate total required balance
+    // Calculate total required balance using dynamically calculated metadata rent
     const totalRequired = serviceFeeInLamports + 
                          mintRent + 
                          tokenAccountRent + 
-                         METADATA_REQUIRED_LAMPORTS +
+                         metadataRentExemption +
                          estimatedTxFees;
-
-    console.log("Cost breakdown (in lamports):", {
-      serviceFee: serviceFeeInLamports,
-      mintRent,
-      tokenAccountRent,
-      metadataRent: METADATA_REQUIRED_LAMPORTS,
-      estimatedTxFees,
-      totalRequired
-    });
 
     // Check wallet balance
     const balance = await connection.getBalance(new PublicKey(data.walletAddress));
@@ -190,7 +172,7 @@ export async function createToken(data: {
         `- Service fee: ${(serviceFee).toFixed(4)} SOL\n` +
         `- Mint account rent: ${(mintRent / 1e9).toFixed(4)} SOL\n` +
         `- Token account rent: ${(tokenAccountRent / 1e9).toFixed(4)} SOL\n` +
-        `- Metadata rent: ${(METADATA_REQUIRED_LAMPORTS / 1e9).toFixed(4)} SOL\n` +
+        `- Metadata rent: ${(metadataRentExemption / 1e9).toFixed(4)} SOL\n` +
         `- Transaction fees: ${(estimatedTxFees / 1e9).toFixed(4)} SOL`
       );
     }
@@ -231,13 +213,12 @@ export async function createToken(data: {
     // Get metadata PDA before creating transactions
     const metadataAddress = getMetadataPDA(mintKeypair.publicKey);
 
-    // Fund the metadata account with the exact required amount
-    console.log("Funding metadata account with exact amount:", METADATA_REQUIRED_LAMPORTS);
+    // Fund the metadata account with dynamically calculated rent exemption
     const fundMetadataAccountTx = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: metadataAddress,
-        lamports: METADATA_REQUIRED_LAMPORTS,
+        lamports: metadataRentExemption, // Use dynamically calculated value
       })
     );
 
@@ -347,7 +328,6 @@ export async function createToken(data: {
       feeTransaction: signature,
     };
   } catch (error) {
-    console.error('Error in createToken:', error instanceof Error ? error.message : 'Unknown error');
     throw error;
   }
 }
