@@ -306,21 +306,18 @@ export async function createToken(data: {
       lastValidBlockHeight: mintBlockhash.lastValidBlockHeight
     });
 
-    // Initialize the mint using a custom signer
-    const customSigner = {
-      publicKey: mintKeypair.publicKey,
-      secretKey: mintKeypair.secretKey,
-    };
-
+    // Initialize the mint using the wallet as fee payer but mintKeypair as authority
     const mint = await createMint(
       connection,
-      customSigner,
+      {
+        publicKey: new PublicKey(data.walletAddress),
+        secretKey: undefined,
+        signTransaction: data.signTransaction
+      } as any,
       new PublicKey(data.walletAddress),
       data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
       data.decimals,
-      mintKeypair,
-      undefined,
-      TOKEN_PROGRAM_ID
+      mintKeypair
     );
 
     console.log("Mint account created successfully");
@@ -354,11 +351,15 @@ export async function createToken(data: {
       lastValidBlockHeight: metadataBlockhash.lastValidBlockHeight
     });
 
-    // Step 4: Create ATA and mint tokens
+    // Step 4: Create ATA and mint tokens using wallet as fee payer
     console.log("Creating Associated Token Account and minting tokens...");
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
-      customSigner,
+      {
+        publicKey: new PublicKey(data.walletAddress),
+        secretKey: undefined,
+        signTransaction: data.signTransaction
+      } as any,
       mint,
       new PublicKey(data.walletAddress)
     );
@@ -366,7 +367,11 @@ export async function createToken(data: {
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
     await mintTo(
       connection,
-      customSigner,
+      {
+        publicKey: new PublicKey(data.walletAddress),
+        secretKey: undefined,
+        signTransaction: data.signTransaction
+      } as any,
       mint,
       tokenAccount.address,
       new PublicKey(data.walletAddress),
