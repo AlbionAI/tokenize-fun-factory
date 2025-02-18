@@ -1,3 +1,4 @@
+
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
@@ -38,34 +39,40 @@ const createMetadataInstruction = (
   symbol: string,
   creatorAddress?: string
 ) => {
+  // Create the metadata as a proper binary structure
   const metadataData = {
     name,
     symbol,
     uri: '',
     sellerFeeBasisPoints: 0,
     creators: creatorAddress ? [{
-      address: new PublicKey(creatorAddress),
-      verified: false,
-      share: 100,
+      address: creatorAddress,
+      verified: 0, // Using number (0) instead of boolean (false)
+      share: 100
     }] : null,
     collection: null,
-    uses: null,
+    uses: null
   };
 
-  const buffer = Buffer.alloc(1);
-  buffer.writeUInt8(33, 0);  // Instruction discriminator for CreateMetadataAccountV3
+  // Create the binary instruction data
+  const instructionBuffer = Buffer.alloc(1);
+  instructionBuffer.writeUInt8(33, 0); // CreateMetadataAccountV3 instruction
 
-  const metadataBuffer = Buffer.from(JSON.stringify(metadataData), 'utf8');
-  const completeBuffer = Buffer.concat([buffer, metadataBuffer]);
+  // Convert metadata to binary format
+  const metadataBuffer = Buffer.from(JSON.stringify(metadataData));
+  const completeBuffer = Buffer.concat([instructionBuffer, metadataBuffer]);
 
+  // Create the transaction with proper account ordering
   const transaction = new Transaction();
-  
+
+  // Add compute budget instruction to handle larger transactions
   transaction.add(
     ComputeBudgetProgram.setComputeUnitLimit({
       units: 400000
     })
   );
 
+  // Add the create metadata instruction with properly ordered accounts
   transaction.add({
     keys: [
       {
