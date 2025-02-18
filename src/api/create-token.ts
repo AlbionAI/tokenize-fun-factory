@@ -189,14 +189,14 @@ export async function createToken(data: {
 
     console.log("Step 6: Creating token metadata...");
     try {
-      // Create metadata using Metaplex with correct TokenStandard type
+      // Create metadata using Metaplex with correct API structure
       const { nft } = await metaplex.nfts().create({
-        uri: '', // We're not using URI for now
+        useNewMint: mint, // Use the existing mint instead of mintAddress
+        tokenStandard: TokenStandard.Fungible,
         name: data.name,
         symbol: data.symbol,
+        uri: '', // We're not using URI for now
         sellerFeeBasisPoints: 0,
-        mintAddress: mint,
-        tokenStandard: TokenStandard.Fungible,
       });
       console.log("Created token metadata:", nft);
     } catch (error) {
