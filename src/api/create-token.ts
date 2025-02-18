@@ -1,3 +1,4 @@
+
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
@@ -141,8 +142,8 @@ export async function createToken(data: {
     const TOKEN_ACCOUNT_SPACE = 165;
     const METADATA_SPACE = 679;
     
-    // The exact amount needed for metadata
-    const METADATA_REQUIRED_LAMPORTS = 1761680;
+    // Updated metadata required lamports based on accurate space calculation
+    const METADATA_REQUIRED_LAMPORTS = 3410880;
 
     // Minimum mint rent threshold
     const MIN_MINT_RENT_LAMPORTS = 2461600;
