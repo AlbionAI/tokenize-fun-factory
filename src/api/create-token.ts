@@ -306,13 +306,15 @@ export async function createToken(data: {
       lastValidBlockHeight: mintBlockhash.lastValidBlockHeight
     });
 
-    // Initialize the mint
+    // Initialize the mint using a custom signer
+    const customSigner = {
+      publicKey: mintKeypair.publicKey,
+      secretKey: mintKeypair.secretKey,
+    };
+
     const mint = await createMint(
       connection,
-      {
-        publicKey: new PublicKey(data.walletAddress),
-        signTransaction: data.signTransaction
-      },
+      customSigner,
       new PublicKey(data.walletAddress),
       data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
       data.decimals,
@@ -356,10 +358,7 @@ export async function createToken(data: {
     console.log("Creating Associated Token Account and minting tokens...");
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
-      {
-        publicKey: new PublicKey(data.walletAddress),
-        signTransaction: data.signTransaction
-      },
+      customSigner,
       mint,
       new PublicKey(data.walletAddress)
     );
@@ -367,10 +366,7 @@ export async function createToken(data: {
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
     await mintTo(
       connection,
-      {
-        publicKey: new PublicKey(data.walletAddress),
-        signTransaction: data.signTransaction
-      },
+      customSigner,
       mint,
       tokenAccount.address,
       new PublicKey(data.walletAddress),
