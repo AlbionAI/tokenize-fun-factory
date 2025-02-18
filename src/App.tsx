@@ -15,10 +15,20 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+// Add debug logging for QuickNode endpoint
 const quickNodeEndpoint = import.meta.env.VITE_QUICKNODE_ENDPOINT;
-const endpoint = quickNodeEndpoint 
-  ? `https://${quickNodeEndpoint.replace(/^(https?:\/\/)/, '')}`
+console.log("QuickNode Endpoint Config:", {
+  exists: !!quickNodeEndpoint,
+  value: quickNodeEndpoint ? `https://${quickNodeEndpoint}` : 'Not configured'
+});
+
+// Use Solana's public mainnet-beta endpoint by default, or QuickNode if configured
+const endpoint = quickNodeEndpoint
+  ? `https://${quickNodeEndpoint}`
   : clusterApiUrl("mainnet-beta");
+
+console.log("Using Solana endpoint:", endpoint);
 
 const wallets = [new PhantomWalletAdapter()];
 

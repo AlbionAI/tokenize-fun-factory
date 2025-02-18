@@ -1,44 +1,27 @@
-
-import { Connection, PublicKey, Transaction, SystemProgram, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { 
-  createCreateMetadataAccountV3Instruction,
-  PROGRAM_ID as TOKEN_METADATA_PROGRAM_ID,
-} from '@metaplex-foundation/mpl-token-metadata';
 
+// Your fee collector wallet address
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
+
+// QuickNode Endpoint (using dedicated mainnet endpoint)
 const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
 
+// Ensure the endpoint starts with https://
 const getFormattedEndpoint = (endpoint: string | undefined) => {
+  console.log("Configuring endpoint with:", endpoint);
+  
   if (!endpoint) {
+    console.error("QuickNode endpoint is not configured in environment variables");
     throw new Error('QuickNode endpoint is not configured');
   }
-  return !endpoint.startsWith('http://') && !endpoint.startsWith('https://')
+  
+  const formattedEndpoint = !endpoint.startsWith('http://') && !endpoint.startsWith('https://')
     ? `https://${endpoint}`
     : endpoint;
-};
-
-// Helper function to wait for transaction confirmation
-const confirmTransaction = async (connection: Connection, signature: string) => {
-  const latestBlockhash = await connection.getLatestBlockhash();
-  await connection.confirmTransaction({
-    blockhash: latestBlockhash.blockhash,
-    lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-    signature: signature
-  }, 'confirmed');
-};
-
-// Helper function to derive metadata PDA
-const getMetadataPDA = (mint: PublicKey) => {
-  const [metadata] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from('metadata'),
-      TOKEN_METADATA_PROGRAM_ID.toBuffer(),
-      mint.toBuffer(),
-    ],
-    TOKEN_METADATA_PROGRAM_ID
-  );
-  return metadata;
+    
+  console.log("Using formatted endpoint:", formattedEndpoint);
+  return formattedEndpoint;
 };
 
 export async function createToken(data: {
@@ -56,9 +39,26 @@ export async function createToken(data: {
   creatorName?: string;
 }) {
   try {
-    const connection = new Connection(getFormattedEndpoint(QUICKNODE_ENDPOINT), 'confirmed');
+    console.log("Starting token creation with data:", {
+      ...data,
+      walletAddress: data.walletAddress.substring(0, 4) + '...' // truncate for privacy
+    });
 
-    // Calculate fees
+    // Initialize connection to Solana using QuickNode with properly formatted endpoint
+    const formattedEndpoint = getFormattedEndpoint(QUICKNODE_ENDPOINT);
+    console.log("Initializing Solana connection with endpoint");
+    const connection = new Connection(formattedEndpoint, 'confirmed');
+
+    // Test connection
+    try {
+      const version = await connection.getVersion();
+      console.log("Successfully connected to Solana. Version:", version);
+    } catch (error) {
+      console.error("Failed to connect to Solana:", error);
+      throw new Error('Failed to connect to Solana network');
+    }
+
+    // Calculate total fee in lamports (1 SOL = 1e9 lamports)
     let totalFee = 0.05; // Base fee
     if (data.authorities) {
       if (data.authorities.freezeAuthority) totalFee += 0.1;
@@ -67,156 +67,127 @@ export async function createToken(data: {
     }
     if (data.creatorName) totalFee += 0.1;
     
-    const feeInLamports = totalFee * LAMPORTS_PER_SOL;
-    
-    // Get minimum rent for accounts
-    const mintRent = await connection.getMinimumBalanceForRentExemption(82);
-    const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(165);
-    const metadataRent = await connection.getMinimumBalanceForRentExemption(679); // Size for metadata account
-    
-    // Calculate total required lamports
-    const totalRequired = feeInLamports + mintRent + tokenAccountRent + metadataRent;
+    const feeInLamports = totalFee * 1e9;
 
     // Check wallet balance
     const balance = await connection.getBalance(new PublicKey(data.walletAddress));
-    if (balance < totalRequired) {
-      throw new Error(`Insufficient balance. Required: ${(totalRequired / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
+    const minimumRent = await connection.getMinimumBalanceForRentExemption(82);
+    const requiredBalance = feeInLamports + minimumRent;
+
+    if (balance < requiredBalance) {
+      throw new Error(`Insufficient balance. You need at least ${(requiredBalance / 1e9).toFixed(4)} SOL to create this token.`);
     }
 
-    // Create a temporary keypair for the mint
-    const mintKeypair = Keypair.generate();
-
-    // Step 1: Send fees and fund mint account
-    console.log('Step 1: Sending fees and funding mint account...');
-    const fundingTx = new Transaction();
+    console.log("Step 1: Paying creation fee...");
     
-    if (FEE_COLLECTOR_WALLET) {
-      fundingTx.add(
-        SystemProgram.transfer({
-          fromPubkey: new PublicKey(data.walletAddress),
-          toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
-          lamports: feeInLamports,
-        })
-      );
-    }
-
-    fundingTx.add(
+    // Create a fee transfer transaction
+    const feeTransaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
-        toPubkey: mintKeypair.publicKey,
-        lamports: mintRent + tokenAccountRent + metadataRent,
+        toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
+        lamports: feeInLamports,
       })
     );
 
-    const { blockhash } = await connection.getLatestBlockhash('finalized');
-    fundingTx.recentBlockhash = blockhash;
-    fundingTx.feePayer = new PublicKey(data.walletAddress);
+    // Get the recent blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+    feeTransaction.recentBlockhash = blockhash;
+    feeTransaction.lastValidBlockHeight = lastValidBlockHeight;
+    feeTransaction.feePayer = new PublicKey(data.walletAddress);
 
-    const signedFundingTx = await data.signTransaction(fundingTx);
+    // Have the user sign the transaction
+    const signedTransaction = await data.signTransaction(feeTransaction);
+
+    // Send and confirm fee transaction
+    const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+    await connection.confirmTransaction({
+      signature,
+      blockhash,
+      lastValidBlockHeight
+    });
+
+    console.log("Fee payment confirmed:", signature);
+
+    // Create a temporary keypair for the mint operation
+    const mintKeypair = Keypair.generate();
+    
+    console.log("Step 2: Funding mint account...");
+    
+    // Fund the mint keypair with the minimum rent exemption
+    const fundMintAccountTx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: new PublicKey(data.walletAddress),
+        toPubkey: mintKeypair.publicKey,
+        lamports: minimumRent,
+      })
+    );
+    
+    fundMintAccountTx.recentBlockhash = blockhash;
+    fundMintAccountTx.feePayer = new PublicKey(data.walletAddress);
+    
+    const signedFundingTx = await data.signTransaction(fundMintAccountTx);
     const fundingSignature = await connection.sendRawTransaction(signedFundingTx.serialize());
-    await confirmTransaction(connection, fundingSignature);
-    console.log('Funding transaction confirmed');
+    await connection.confirmTransaction({
+      signature: fundingSignature,
+      blockhash,
+      lastValidBlockHeight
+    });
 
-    // Step 2: Create and initialize the token mint
-    console.log('Step 2: Creating mint account...');
+    console.log("Step 3: Creating token mint...");
+    
+    // Create token mint with selected authorities
     const mint = await createMint(
       connection,
       mintKeypair,
-      new PublicKey(data.walletAddress),
+      new PublicKey(data.walletAddress), // The customer's wallet is the mint authority
       data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
       data.decimals,
       undefined,
       undefined,
       TOKEN_PROGRAM_ID
     );
-    console.log('Mint account created:', mint.toBase58());
 
-    // Step 3: Create metadata account
-    console.log('Step 3: Creating metadata account...');
-    const metadataPDA = getMetadataPDA(mint);
-    const metadataTx = new Transaction().add(
-      createCreateMetadataAccountV3Instruction(
-        {
-          metadata: metadataPDA,
-          mint: mint,
-          mintAuthority: new PublicKey(data.walletAddress),
-          payer: new PublicKey(data.walletAddress),
-          updateAuthority: new PublicKey(data.walletAddress),
-        },
-        {
-          createMetadataAccountArgsV3: {
-            data: {
-              name: data.name,
-              symbol: data.symbol,
-              uri: '',
-              sellerFeeBasisPoints: 0,
-              creators: data.creatorName ? [{
-                address: new PublicKey(data.walletAddress),
-                verified: true,
-                share: 100
-              }] : null,
-              collection: null,
-              uses: null,
-            },
-            isMutable: true,
-            collectionDetails: null,
-          },
-        }
-      )
+    console.log("Created mint:", mint.toBase58());
+
+    console.log("Step 4: Creating token account...");
+    
+    // Get the token account of the customer's wallet address, and if it does not exist, create it
+    const tokenAccount = await getOrCreateAssociatedTokenAccount(
+      connection,
+      mintKeypair,
+      mint,
+      new PublicKey(data.walletAddress),
+      undefined,
+      undefined,
+      undefined,
+      TOKEN_PROGRAM_ID
     );
 
-    metadataTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    metadataTx.feePayer = new PublicKey(data.walletAddress);
+    console.log("Created token account:", tokenAccount.address.toBase58());
+
+    console.log("Step 5: Minting initial supply...");
     
-    const signedMetadataTx = await data.signTransaction(metadataTx);
-    const metadataSignature = await connection.sendRawTransaction(signedMetadataTx.serialize());
-    await confirmTransaction(connection, metadataSignature);
-    console.log('Metadata account created:', metadataPDA.toBase58());
-
-    // Step 4: Create associated token account with retries
-    console.log('Step 4: Creating associated token account...');
-    let tokenAccount;
-    let retries = 3;
-    while (retries > 0) {
-      try {
-        tokenAccount = await getOrCreateAssociatedTokenAccount(
-          connection,
-          mintKeypair,
-          mint,
-          new PublicKey(data.walletAddress)
-        );
-        console.log('Token account created:', tokenAccount.address.toBase58());
-        break;
-      } catch (error) {
-        console.log(`Retry ${4 - retries} - Error creating token account:`, error);
-        retries--;
-        if (retries === 0) throw error;
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
-      }
-    }
-
-    if (!tokenAccount) {
-      throw new Error('Failed to create token account after retries');
-    }
-
-    // Step 5: Mint tokens
-    console.log('Step 5: Minting tokens...');
+    // Convert supply string to number and mint tokens
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
-    const mintSignature = await mintTo(
+    await mintTo(
       connection,
       mintKeypair,
       mint,
       tokenAccount.address,
       new PublicKey(data.walletAddress),
-      supplyNumber
+      supplyNumber,
+      [],
+      undefined,
+      TOKEN_PROGRAM_ID
     );
-    await confirmTransaction(connection, mintSignature);
-    console.log('Tokens minted successfully');
+
+    console.log("Token creation completed successfully!");
 
     return {
       success: true,
       tokenAddress: mint.toBase58(),
       feeAmount: totalFee,
+      feeTransaction: signature,
     };
   } catch (error) {
     console.error('Error in createToken:', error);
