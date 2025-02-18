@@ -1,11 +1,15 @@
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { Buffer } from 'buffer';
 
 // Your fee collector wallet address
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
 
 // QuickNode Endpoint (using dedicated mainnet endpoint)
 const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
+
+// Token Metadata Program ID
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
 
 // Ensure the endpoint starts with https://
 const getFormattedEndpoint = (endpoint: string | undefined) => {
@@ -22,6 +26,87 @@ const getFormattedEndpoint = (endpoint: string | undefined) => {
     
   console.log("Using formatted endpoint:", formattedEndpoint);
   return formattedEndpoint;
+};
+
+// Function to derive metadata PDA
+const getMetadataPDA = (mint: PublicKey): PublicKey => {
+  const [publicKey] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from('metadata'),
+      TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+      mint.toBuffer(),
+    ],
+    TOKEN_METADATA_PROGRAM_ID
+  );
+  return publicKey;
+};
+
+// Function to create metadata instruction
+const createMetadataInstruction = (
+  metadata: PublicKey,
+  mint: PublicKey,
+  mintAuthority: PublicKey,
+  payer: PublicKey,
+  updateAuthority: PublicKey,
+  name: string,
+  symbol: string,
+  creatorAddress?: string
+) => {
+  const data = {
+    name,
+    symbol,
+    uri: '',
+    sellerFeeBasisPoints: 0,
+    creators: creatorAddress ? [{
+      address: creatorAddress,
+      verified: false,
+      share: 100,
+    }] : null,
+    collection: null,
+    uses: null,
+  };
+
+  const keys = [
+    {
+      pubkey: metadata,
+      isSigner: false,
+      isWritable: true,
+    },
+    {
+      pubkey: mint,
+      isSigner: false,
+      isWritable: false,
+    },
+    {
+      pubkey: mintAuthority,
+      isSigner: true,
+      isWritable: false,
+    },
+    {
+      pubkey: payer,
+      isSigner: true,
+      isWritable: true,
+    },
+    {
+      pubkey: updateAuthority,
+      isSigner: false,
+      isWritable: false,
+    },
+    {
+      pubkey: SystemProgram.programId,
+      isSigner: false,
+      isWritable: false,
+    },
+  ];
+
+  return new Transaction().add({
+    keys,
+    programId: TOKEN_METADATA_PROGRAM_ID,
+    data: Buffer.from([
+      0, // Create Metadata instruction
+      ...Buffer.from(JSON.stringify(data)),
+    ]),
+  });
 };
 
 export async function createToken(data: {
@@ -61,10 +146,12 @@ export async function createToken(data: {
     // Calculate all required costs
     const MINT_SPACE = 82; // Size of mint account
     const TOKEN_ACCOUNT_SPACE = 165; // Size of token account
+    const METADATA_SPACE = 679; // Size needed for metadata account
     
     // Get rent exemptions
     const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SPACE);
     const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE);
+    const metadataRent = await connection.getMinimumBalanceForRentExemption(METADATA_SPACE);
     
     // Calculate service fee
     let serviceFee = 0.05; // Base fee
@@ -81,12 +168,13 @@ export async function createToken(data: {
     const estimatedTxFees = 5000 * 3;
 
     // Calculate total required balance
-    const totalRequired = serviceFeeInLamports + mintRent + tokenAccountRent + estimatedTxFees;
+    const totalRequired = serviceFeeInLamports + mintRent + tokenAccountRent + estimatedTxFees + metadataRent;
 
     console.log("Cost breakdown (in lamports):", {
       serviceFee: serviceFeeInLamports,
       mintRent,
       tokenAccountRent,
+      metadataRent,
       estimatedTxFees,
       totalRequired
     });
@@ -101,6 +189,7 @@ export async function createToken(data: {
         `- Service fee: ${(serviceFee).toFixed(4)} SOL\n` +
         `- Mint account rent: ${(mintRent / 1e9).toFixed(4)} SOL\n` +
         `- Token account rent: ${(tokenAccountRent / 1e9).toFixed(4)} SOL\n` +
+        `- Metadata rent: ${(metadataRent / 1e9).toFixed(4)} SOL\n` +
         `- Transaction fees: ${(estimatedTxFees / 1e9).toFixed(4)} SOL`
       );
     }
@@ -176,6 +265,34 @@ export async function createToken(data: {
 
     console.log("Created mint:", mint.toBase58());
 
+    // Create metadata
+    console.log("Creating token metadata...");
+    
+    const metadataAddress = getMetadataPDA(mint);
+    const metadataInstruction = createMetadataInstruction(
+      metadataAddress,
+      mint,
+      new PublicKey(data.walletAddress),
+      new PublicKey(data.walletAddress),
+      new PublicKey(data.walletAddress),
+      data.name,
+      data.symbol,
+      data.creatorName ? data.walletAddress : undefined
+    );
+
+    metadataInstruction.recentBlockhash = blockhash;
+    metadataInstruction.feePayer = new PublicKey(data.walletAddress);
+
+    const signedMetadataTransaction = await data.signTransaction(metadataInstruction);
+    const metadataSignature = await connection.sendRawTransaction(signedMetadataTransaction.serialize());
+    await connection.confirmTransaction({
+      signature: metadataSignature,
+      blockhash,
+      lastValidBlockHeight
+    });
+
+    console.log("Created token metadata:", metadataAddress.toBase58());
+
     console.log("Step 4: Creating token account...");
     
     // Get the token account of the customer's wallet address, and if it does not exist, create it
@@ -213,6 +330,7 @@ export async function createToken(data: {
     return {
       success: true,
       tokenAddress: mint.toBase58(),
+      metadataAddress: metadataAddress.toBase58(),
       feeAmount: serviceFee,
       feeTransaction: signature,
     };
