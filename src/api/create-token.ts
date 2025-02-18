@@ -1,4 +1,3 @@
-
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
@@ -52,60 +51,64 @@ const createMetadataInstruction = (
   symbol: string,
   creatorAddress?: string
 ) => {
-  // Create metadata JSON
-  const uri = JSON.stringify({
-    name,
-    symbol,
-    description: `${name} token`,
-    image: '', // Optional: Add image URL if available
-    attributes: [],
-    properties: {
-      files: [],
-      creators: creatorAddress ? [{
-        address: creatorAddress,
-        verified: true,
-        share: 100
-      }] : []
-    }
-  });
-
-  // Calculate buffer size
+  const uri = '';  // Empty URI initially as per Token Metadata Program v1.0
+  
   const nameBuffer = Buffer.from(name);
   const symbolBuffer = Buffer.from(symbol);
   const uriBuffer = Buffer.from(uri);
-
-  // Version 1 metadata requires a fixed size buffer
-  const bufferSize = 1 + // Version
-    32 + // Name max length
-    10 + // Symbol max length
-    200 + // URI max length
-    1 + // Creators option
-    (creatorAddress ? 34 : 0); // Creator data if present
+  
+  // Fixed buffer size for Token Metadata Program v1.0
+  const bufferSize = 1 + // Instruction discriminator
+    32 + // Update authority key
+    32 + // Mint key
+    4 + nameBuffer.length + // Name length prefix + name
+    4 + symbolBuffer.length + // Symbol length prefix + symbol
+    4 + uriBuffer.length + // URI length prefix + uri
+    2 + // Seller fee basis points (u16)
+    1 + // Creator array length
+    (creatorAddress ? (32 + 1 + 1) : 0); // Optional creator data
 
   const buffer = Buffer.alloc(bufferSize);
   let offset = 0;
 
-  // Write version (1)
-  buffer.writeUInt8(1, offset);
+  // Instruction discriminator for CreateMetadataAccountV2
+  buffer.writeUInt8(0, offset);
   offset += 1;
 
-  // Write name with padding
-  nameBuffer.copy(buffer, offset, 0, Math.min(nameBuffer.length, 32));
+  // Update authority pubkey
+  updateAuthority.toBuffer().copy(buffer, offset);
   offset += 32;
 
-  // Write symbol with padding
-  symbolBuffer.copy(buffer, offset, 0, Math.min(symbolBuffer.length, 10));
-  offset += 10;
+  // Mint pubkey
+  mint.toBuffer().copy(buffer, offset);
+  offset += 32;
 
-  // Write URI with padding
-  uriBuffer.copy(buffer, offset, 0, Math.min(uriBuffer.length, 200));
-  offset += 200;
+  // Write name with length prefix
+  buffer.writeUInt32LE(nameBuffer.length, offset);
+  offset += 4;
+  nameBuffer.copy(buffer, offset);
+  offset += nameBuffer.length;
 
-  // Write creators present flag
+  // Write symbol with length prefix
+  buffer.writeUInt32LE(symbolBuffer.length, offset);
+  offset += 4;
+  symbolBuffer.copy(buffer, offset);
+  offset += symbolBuffer.length;
+
+  // Write URI with length prefix
+  buffer.writeUInt32LE(uriBuffer.length, offset);
+  offset += 4;
+  uriBuffer.copy(buffer, offset);
+  offset += uriBuffer.length;
+
+  // Seller fee basis points (0 for tokens)
+  buffer.writeUInt16LE(0, offset);
+  offset += 2;
+
+  // Creator array length
   buffer.writeUInt8(creatorAddress ? 1 : 0, offset);
   offset += 1;
 
-  // Write creator data if present
   if (creatorAddress) {
     const creatorPubkey = new PublicKey(creatorAddress);
     creatorPubkey.toBuffer().copy(buffer, offset);
@@ -159,11 +162,6 @@ const createMetadataInstruction = (
       },
       {
         pubkey: TOKEN_METADATA_PROGRAM_ID,
-        isSigner: false,
-        isWritable: false,
-      },
-      {
-        pubkey: TOKEN_PROGRAM_ID,
         isSigner: false,
         isWritable: false,
       },
