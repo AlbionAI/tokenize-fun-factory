@@ -1,14 +1,15 @@
+
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { 
   CreateMetadataAccountV3InstructionData,
   Creator,
-  PROGRAM_ID as TOKEN_METADATA_PROGRAM_ID
 } from '@metaplex-foundation/mpl-token-metadata';
 import { Buffer } from 'buffer';
 
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
 const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
 
 const getFormattedEndpoint = (endpoint: string | undefined) => {
   if (!endpoint) {
@@ -66,36 +67,74 @@ const createMetadataInstruction = (
   let creators: Creator[] | null = null;
   if (creatorAddress) {
     creators = [{
-      address: new PublicKey(creatorAddress),
-      verified: 0,
+      address: creatorAddress,
+      verified: false,
       share: 100
     }];
   }
 
-  const instruction = new CreateMetadataAccountV3InstructionData({
-    data: {
-      name,
-      symbol,
-      uri: '',
-      sellerFeeBasisPoints: 0,
-      creators,
-      collection: null,
-      uses: null
-    },
+  const metadataData = {
+    name,
+    symbol,
+    uri: '',
+    sellerFeeBasisPoints: 0,
+    creators,
+    collection: null,
+    uses: null
+  };
+
+  const accounts = {
+    metadata,
+    mint,
+    mintAuthority,
+    payer,
+    updateAuthority,
+  };
+
+  const instruction = CreateMetadataAccountV3InstructionData.serialize({
+    data: metadataData,
     isMutable: true,
     collectionDetails: null
-  }).instruction(
-    TOKEN_METADATA_PROGRAM_ID,
-    {
-      metadata,
-      mint,
-      mintAuthority: mintAuthority,
-      payer,
-      updateAuthority,
-    }
-  );
+  });
 
-  transaction.add(instruction);
+  const createMetadataInstruction = new Transaction().add({
+    keys: [
+      {
+        pubkey: metadata,
+        isSigner: false,
+        isWritable: true,
+      },
+      {
+        pubkey: mint,
+        isSigner: false,
+        isWritable: false,
+      },
+      {
+        pubkey: mintAuthority,
+        isSigner: true,
+        isWritable: false,
+      },
+      {
+        pubkey: payer,
+        isSigner: true,
+        isWritable: true,
+      },
+      {
+        pubkey: updateAuthority,
+        isSigner: false,
+        isWritable: false,
+      },
+      {
+        pubkey: SystemProgram.programId,
+        isSigner: false,
+        isWritable: false,
+      },
+    ],
+    programId: TOKEN_METADATA_PROGRAM_ID,
+    data: instruction,
+  });
+
+  transaction.add(createMetadataInstruction);
 
   return transaction;
 };
