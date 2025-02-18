@@ -1,4 +1,3 @@
-
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
@@ -39,8 +38,15 @@ const createMetadataInstruction = (
   symbol: string,
   creatorAddress?: string
 ) => {
-  // Create a buffer to store our instruction data
-  // Calculate total size: 1 (instruction) + 32 (name) + 10 (symbol) + 200 (uri) + 2 (seller fee) + 1 (has creators bool) + (optional creator data)
+  // Create metadata JSON
+  const uri = JSON.stringify({
+    name,
+    symbol,
+    description: `${name} token`,
+    image: '', // Optional: Add image URL if available
+  });
+
+  // Calculate buffer size
   const creatorSize = creatorAddress ? 34 : 0; // 32 (pubkey) + 1 (verified) + 1 (share)
   const bufferSize = 1 + 32 + 10 + 200 + 2 + 1 + creatorSize;
   const buffer = Buffer.alloc(bufferSize);
@@ -65,7 +71,7 @@ const createMetadataInstruction = (
   offset += 10;
 
   // Write uri (padded to 200 bytes)
-  const uriBytes = Buffer.from('');
+  const uriBytes = Buffer.from(uri);
   const paddedUri = Buffer.alloc(200);
   uriBytes.copy(paddedUri, 0, 0, Math.min(uriBytes.length, 200));
   paddedUri.copy(buffer, offset);
@@ -84,7 +90,7 @@ const createMetadataInstruction = (
     const creatorPubkey = new PublicKey(creatorAddress);
     creatorPubkey.toBuffer().copy(buffer, offset);
     offset += 32;
-    buffer.writeUInt8(0, offset); // verified
+    buffer.writeUInt8(1, offset); // verified = true
     offset += 1;
     buffer.writeUInt8(100, offset); // share percentage
   }
@@ -121,7 +127,7 @@ const createMetadataInstruction = (
       },
       {
         pubkey: updateAuthority,
-        isSigner: false,
+        isSigner: true,
         isWritable: false,
       },
       {
