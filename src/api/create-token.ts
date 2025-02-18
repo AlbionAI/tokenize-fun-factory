@@ -1,10 +1,6 @@
 
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { 
-  createCreateMetadataAccountV3Instruction,
-  PROGRAM_ID as TOKEN_METADATA_PROGRAM_ID,
-} from '@metaplex-foundation/mpl-token-metadata';
 
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
 const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
@@ -26,19 +22,6 @@ const confirmTransaction = async (connection: Connection, signature: string) => 
     lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
     signature: signature
   }, 'confirmed');
-};
-
-// Helper function to derive metadata PDA
-const getMetadataPDA = (mint: PublicKey) => {
-  const [metadata] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from('metadata'),
-      TOKEN_METADATA_PROGRAM_ID.toBuffer(),
-      mint.toBuffer(),
-    ],
-    TOKEN_METADATA_PROGRAM_ID
-  );
-  return metadata;
 };
 
 export async function createToken(data: {
@@ -69,13 +52,12 @@ export async function createToken(data: {
     
     const feeInLamports = totalFee * LAMPORTS_PER_SOL;
     
-    // Get minimum rent for accounts
+    // Get minimum rent for token account
     const mintRent = await connection.getMinimumBalanceForRentExemption(82);
     const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(165);
-    const metadataRent = await connection.getMinimumBalanceForRentExemption(679); // Size for metadata account
     
     // Calculate total required lamports
-    const totalRequired = feeInLamports + mintRent + tokenAccountRent + metadataRent;
+    const totalRequired = feeInLamports + mintRent + tokenAccountRent;
 
     // Check wallet balance
     const balance = await connection.getBalance(new PublicKey(data.walletAddress));
@@ -104,7 +86,7 @@ export async function createToken(data: {
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: mintKeypair.publicKey,
-        lamports: mintRent + tokenAccountRent + metadataRent,
+        lamports: mintRent + tokenAccountRent,
       })
     );
 
@@ -131,50 +113,8 @@ export async function createToken(data: {
     );
     console.log('Mint account created:', mint.toBase58());
 
-    // Step 3: Create metadata account
-    console.log('Step 3: Creating metadata account...');
-    const metadataPDA = getMetadataPDA(mint);
-    const metadataTx = new Transaction().add(
-      createCreateMetadataAccountV3Instruction(
-        {
-          metadata: metadataPDA,
-          mint: mint,
-          mintAuthority: new PublicKey(data.walletAddress),
-          payer: new PublicKey(data.walletAddress),
-          updateAuthority: new PublicKey(data.walletAddress),
-        },
-        {
-          createMetadataAccountArgsV3: {
-            data: {
-              name: data.name,
-              symbol: data.symbol,
-              uri: '',
-              sellerFeeBasisPoints: 0,
-              creators: data.creatorName ? [{
-                address: new PublicKey(data.walletAddress),
-                verified: true,
-                share: 100
-              }] : null,
-              collection: null,
-              uses: null,
-            },
-            isMutable: true,
-            collectionDetails: null,
-          },
-        }
-      )
-    );
-
-    metadataTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    metadataTx.feePayer = new PublicKey(data.walletAddress);
-    
-    const signedMetadataTx = await data.signTransaction(metadataTx);
-    const metadataSignature = await connection.sendRawTransaction(signedMetadataTx.serialize());
-    await confirmTransaction(connection, metadataSignature);
-    console.log('Metadata account created:', metadataPDA.toBase58());
-
-    // Step 4: Create associated token account with retries
-    console.log('Step 4: Creating associated token account...');
+    // Step 3: Create associated token account with retries
+    console.log('Step 3: Creating associated token account...');
     let tokenAccount;
     let retries = 3;
     while (retries > 0) {
@@ -199,8 +139,8 @@ export async function createToken(data: {
       throw new Error('Failed to create token account after retries');
     }
 
-    // Step 5: Mint tokens
-    console.log('Step 5: Minting tokens...');
+    // Step 4: Mint tokens
+    console.log('Step 4: Minting tokens...');
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
     const mintSignature = await mintTo(
       connection,
