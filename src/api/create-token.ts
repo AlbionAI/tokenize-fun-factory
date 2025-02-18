@@ -36,7 +36,7 @@ const getMetadataPDA = (mint: PublicKey): PublicKey => {
   return publicKey;
 };
 
-// Function to create metadata instruction
+// Function to create metadata instruction with proper serialization
 const createMetadataInstruction = (
   metadata: PublicKey,
   mint: PublicKey,
@@ -47,19 +47,49 @@ const createMetadataInstruction = (
   symbol: string,
   creatorAddress?: string
 ) => {
-  const data = {
-    name,
-    symbol,
-    uri: '',
+  // Properly structure and serialize the metadata
+  const metadataData = {
+    name: name.padEnd(32),
+    symbol: symbol.padEnd(10),
+    uri: ''.padEnd(200),
     sellerFeeBasisPoints: 0,
     creators: creatorAddress ? [{
       address: creatorAddress,
-      verified: false,
+      verified: 0, // Changed from boolean to number
       share: 100,
     }] : null,
     collection: null,
     uses: null,
   };
+
+  // Convert the data to a buffer using a more structured approach
+  const buffer = Buffer.alloc(1 + 32 + 10 + 200 + 2 + (creatorAddress ? 34 : 0));
+  let offset = 0;
+
+  // Write instruction discriminator
+  buffer.writeUInt8(0, offset); // Create Metadata instruction
+  offset += 1;
+
+  // Write name, symbol, and uri with fixed lengths
+  buffer.write(metadataData.name, offset, 'utf8');
+  offset += 32;
+  buffer.write(metadataData.symbol, offset, 'utf8');
+  offset += 10;
+  buffer.write(metadataData.uri, offset, 'utf8');
+  offset += 200;
+
+  // Write seller fee basis points
+  buffer.writeUInt16LE(metadataData.sellerFeeBasisPoints, offset);
+  offset += 2;
+
+  // Write creators if present
+  if (creatorAddress) {
+    buffer.write(creatorAddress, offset, 32, 'utf8');
+    offset += 32;
+    buffer.writeUInt8(0, offset); // verified
+    offset += 1;
+    buffer.writeUInt8(100, offset); // share
+  }
 
   const keys = [
     {
@@ -74,7 +104,7 @@ const createMetadataInstruction = (
     },
     {
       pubkey: mintAuthority,
-      isSigner: true,
+      isSigner: true, // Changed to true as mint authority must sign
       isWritable: false,
     },
     {
@@ -84,7 +114,7 @@ const createMetadataInstruction = (
     },
     {
       pubkey: updateAuthority,
-      isSigner: false,
+      isSigner: true, // Changed to true as update authority must sign for creation
       isWritable: false,
     },
     {
@@ -97,10 +127,7 @@ const createMetadataInstruction = (
   return new Transaction().add({
     keys,
     programId: TOKEN_METADATA_PROGRAM_ID,
-    data: Buffer.from([
-      0, // Create Metadata instruction
-      ...Buffer.from(JSON.stringify(data)),
-    ]),
+    data: buffer,
   });
 };
 
