@@ -1,3 +1,4 @@
+
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
@@ -93,14 +94,14 @@ const createMetadataInstruction = (
     },
   ];
 
-  return new Transaction().add({
+  return {
     keys,
     programId: TOKEN_METADATA_PROGRAM_ID,
     data: Buffer.from([
-      0, // Create Metadata instruction
+      0,
       ...Buffer.from(JSON.stringify(data)),
     ]),
-  });
+  };
 };
 
 export async function createToken(data: {
@@ -119,25 +120,24 @@ export async function createToken(data: {
 }) {
   try {
     const formattedEndpoint = getFormattedEndpoint(QUICKNODE_ENDPOINT);
-    const connection = new Connection(formattedEndpoint, 'confirmed');
+    const connection = new Connection(formattedEndpoint, {
+      commitment: 'confirmed',
+      rateLimit: 10 // Limit requests per second
+    });
 
-    try {
-      await connection.getVersion();
-    } catch (error) {
-      throw new Error('Failed to connect to Solana network');
-    }
+    // Get the latest blockhash once for all transactions
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
 
     // Calculate all required costs
     const MINT_SPACE = 82;
     const TOKEN_ACCOUNT_SPACE = 165;
     const METADATA_SPACE = 679;
     
-    // Calculate metadata rent exemption directly from connection
-    const metadataRentExemption = await connection.getMinimumBalanceForRentExemption(METADATA_SPACE);
-    
-    // Get other rent exemptions
-    const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SPACE);
-    const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE);
+    const [metadataRentExemption, mintRent, tokenAccountRent] = await Promise.all([
+      connection.getMinimumBalanceForRentExemption(METADATA_SPACE),
+      connection.getMinimumBalanceForRentExemption(MINT_SPACE),
+      connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE)
+    ]);
     
     // Calculate service fee
     let serviceFee = 0.05;
@@ -149,115 +149,56 @@ export async function createToken(data: {
     if (data.creatorName) serviceFee += 0.1;
     
     const serviceFeeInLamports = serviceFee * 1e9;
-
-    // Calculate transaction fees
-    const TX_FEE = 5000;
-    const NUM_TRANSACTIONS = 4;
-    const estimatedTxFees = TX_FEE * NUM_TRANSACTIONS;
-
-    // Calculate total required balance using dynamically calculated metadata rent
-    const totalRequired = serviceFeeInLamports + 
-                         mintRent + 
-                         tokenAccountRent + 
-                         metadataRentExemption +
-                         estimatedTxFees;
+    const estimatedTxFees = 5000 * 2; // Reduced number of transactions
+    const totalRequired = serviceFeeInLamports + mintRent + tokenAccountRent + metadataRentExemption + estimatedTxFees;
 
     // Check wallet balance
     const balance = await connection.getBalance(new PublicKey(data.walletAddress));
     
     if (balance < totalRequired) {
-      const requiredSOL = (totalRequired / 1e9).toFixed(4);
-      throw new Error(
-        `Insufficient balance. Required ${requiredSOL} SOL for:\n` +
-        `- Service fee: ${(serviceFee).toFixed(4)} SOL\n` +
-        `- Mint account rent: ${(mintRent / 1e9).toFixed(4)} SOL\n` +
-        `- Token account rent: ${(tokenAccountRent / 1e9).toFixed(4)} SOL\n` +
-        `- Metadata rent: ${(metadataRentExemption / 1e9).toFixed(4)} SOL\n` +
-        `- Transaction fees: ${(estimatedTxFees / 1e9).toFixed(4)} SOL`
-      );
+      throw new Error(`Insufficient balance. Required ${(totalRequired / 1e9).toFixed(4)} SOL`);
     }
 
-    console.log("Step 1: Paying service fee...");
-    
-    // Create a fee transfer transaction
-    const feeTransaction = new Transaction().add(
+    // Create a temporary keypair for the mint operation
+    const mintKeypair = Keypair.generate();
+    const metadataAddress = getMetadataPDA(mintKeypair.publicKey);
+
+    // Batch all setup instructions into a single transaction
+    const setupTransaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
         lamports: serviceFeeInLamports,
-      })
-    );
-
-    // Get the recent blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-    feeTransaction.recentBlockhash = blockhash;
-    feeTransaction.lastValidBlockHeight = lastValidBlockHeight;
-    feeTransaction.feePayer = new PublicKey(data.walletAddress);
-
-    // Have the user sign the transaction
-    const signedTransaction = await data.signTransaction(feeTransaction);
-
-    // Send and confirm fee transaction
-    const signature = await connection.sendRawTransaction(signedTransaction.serialize());
-    await connection.confirmTransaction({
-      signature,
-      blockhash,
-      lastValidBlockHeight
-    });
-
-    console.log("Fee payment confirmed:", signature);
-
-    // Create a temporary keypair for the mint operation
-    const mintKeypair = Keypair.generate();
-    
-    // Get metadata PDA before creating transactions
-    const metadataAddress = getMetadataPDA(mintKeypair.publicKey);
-
-    // Fund the metadata account with dynamically calculated rent exemption
-    const fundMetadataAccountTx = new Transaction().add(
+      }),
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: metadataAddress,
-        lamports: metadataRentExemption, // Use dynamically calculated value
-      })
-    );
-
-    fundMetadataAccountTx.recentBlockhash = blockhash;
-    fundMetadataAccountTx.feePayer = new PublicKey(data.walletAddress);
-    
-    const signedMetadataFundingTx = await data.signTransaction(fundMetadataAccountTx);
-    const metadataFundingSignature = await connection.sendRawTransaction(signedMetadataFundingTx.serialize());
-    await connection.confirmTransaction({
-      signature: metadataFundingSignature,
-      blockhash,
-      lastValidBlockHeight
-    });
-
-    console.log("Metadata account funded:", metadataFundingSignature);
-
-    console.log("Step 2: Funding mint account...");
-    
-    // Fund the mint keypair with the minimum rent exemption
-    const fundMintAccountTx = new Transaction().add(
+        lamports: metadataRentExemption,
+      }),
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: mintKeypair.publicKey,
         lamports: mintRent,
       })
     );
+
+    setupTransaction.recentBlockhash = blockhash;
+    setupTransaction.feePayer = new PublicKey(data.walletAddress);
     
-    fundMintAccountTx.recentBlockhash = blockhash;
-    fundMintAccountTx.feePayer = new PublicKey(data.walletAddress);
-    
-    const signedFundingTx = await data.signTransaction(fundMintAccountTx);
-    const fundingSignature = await connection.sendRawTransaction(signedFundingTx.serialize());
+    const signedSetupTransaction = await data.signTransaction(setupTransaction);
+    const setupSignature = await connection.sendRawTransaction(signedSetupTransaction.serialize(), {
+      skipPreflight: false,
+      preflightCommitment: 'confirmed'
+    });
+
+    // Wait for setup transaction to confirm
     await connection.confirmTransaction({
-      signature: fundingSignature,
+      signature: setupSignature,
       blockhash,
       lastValidBlockHeight
     });
-    
-    // Create token mint with selected authorities
+
+    // Create token mint with authorities
     const mint = await createMint(
       connection,
       mintKeypair,
@@ -268,9 +209,12 @@ export async function createToken(data: {
       undefined,
       TOKEN_PROGRAM_ID
     );
-    
-    // Create metadata
-    const metadataInstruction = createMetadataInstruction(
+
+    // Create metadata and mint tokens in final transaction
+    const finalTransaction = new Transaction();
+
+    // Add metadata instruction
+    finalTransaction.add(createMetadataInstruction(
       metadataAddress,
       mint,
       new PublicKey(data.walletAddress),
@@ -279,32 +223,31 @@ export async function createToken(data: {
       data.name,
       data.symbol,
       data.creatorName ? data.walletAddress : undefined
-    );
+    ));
 
-    metadataInstruction.recentBlockhash = blockhash;
-    metadataInstruction.feePayer = new PublicKey(data.walletAddress);
+    finalTransaction.recentBlockhash = blockhash;
+    finalTransaction.feePayer = new PublicKey(data.walletAddress);
 
-    const signedMetadataTransaction = await data.signTransaction(metadataInstruction);
-    const metadataSignature = await connection.sendRawTransaction(signedMetadataTransaction.serialize());
+    const signedFinalTransaction = await data.signTransaction(finalTransaction);
+    const finalSignature = await connection.sendRawTransaction(signedFinalTransaction.serialize(), {
+      skipPreflight: false,
+      preflightCommitment: 'confirmed'
+    });
+
     await connection.confirmTransaction({
-      signature: metadataSignature,
+      signature: finalSignature,
       blockhash,
       lastValidBlockHeight
     });
-    
-    // Get the token account of the customer's wallet address, and if it does not exist, create it
+
+    // Create token account and mint tokens
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       mintKeypair,
       mint,
-      new PublicKey(data.walletAddress),
-      undefined,
-      undefined,
-      undefined,
-      TOKEN_PROGRAM_ID
+      new PublicKey(data.walletAddress)
     );
 
-    // Convert supply string to number and mint tokens
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
     await mintTo(
       connection,
@@ -318,14 +261,12 @@ export async function createToken(data: {
       TOKEN_PROGRAM_ID
     );
 
-    console.log("Token creation completed successfully!");
-
     return {
       success: true,
       tokenAddress: mint.toBase58(),
       metadataAddress: metadataAddress.toBase58(),
       feeAmount: serviceFee,
-      feeTransaction: signature,
+      feeTransaction: setupSignature,
     };
   } catch (error) {
     throw error;
