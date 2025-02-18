@@ -1,6 +1,11 @@
 
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { createUmi } from "@metaplex-foundation/umi";
+import { mplTokenMetadata, createMetadataAccountV3 } from "@metaplex-foundation/mpl-token-metadata";
+import { publicKey } from '@metaplex-foundation/umi';
+import { createSignerFromKeypair } from "@metaplex-foundation/umi";
+import { keypairIdentity } from '@metaplex-foundation/umi-bundle-defaults';
 
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
 const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
@@ -24,12 +29,23 @@ const confirmTransaction = async (connection: Connection, signature: string) => 
   }, 'confirmed');
 };
 
+// Setup Umi instance
+const createUmiInstance = () => {
+  const endpoint = getFormattedEndpoint(QUICKNODE_ENDPOINT);
+  const umi = createUmi(endpoint);
+  umi.use(mplTokenMetadata());
+  return umi;
+};
+
 export async function createToken(data: {
   name: string;
   symbol: string;
   supply: string;
   decimals: number;
   walletAddress: string;
+  description?: string;
+  logo?: File | null;
+  website?: string;
   signTransaction: (transaction: Transaction) => Promise<Transaction>;
   authorities?: {
     freezeAuthority: boolean;
@@ -152,6 +168,43 @@ export async function createToken(data: {
     );
     await confirmTransaction(connection, mintSignature);
     console.log('Tokens minted successfully');
+
+    // Step 5: Create metadata
+    console.log('Step 5: Creating token metadata...');
+    const umi = createUmiInstance();
+    const mintPublicKey = publicKey(mint.toBase58());
+    
+    // Create a signer from the mint keypair
+    const signerKeypair = createSignerFromKeypair(umi, {
+      secretKey: mintKeypair.secretKey,
+      publicKey: mintKeypair.publicKey.toBytes(),
+    });
+    umi.use(keypairIdentity(signerKeypair));
+
+    // Prepare metadata
+    const metadataUri = data.logo 
+      ? `https://arweave.net/your-logo-uri` // You'll need to implement logo upload to Arweave
+      : '';
+
+    const metadataTx = createMetadataAccountV3(umi, {
+      mint: mintPublicKey,
+      mintAuthority: signerKeypair,
+      updateAuthority: signerKeypair.publicKey,
+      data: {
+        name: data.name,
+        symbol: data.symbol,
+        uri: metadataUri,
+        sellerFeeBasisPoints: 0,
+        creators: null,
+        collection: null,
+        uses: null,
+      },
+      isMutable: true,
+      collectionDetails: null,
+    });
+
+    await metadataTx.sendAndConfirm();
+    console.log('Metadata created successfully');
 
     return {
       success: true,
