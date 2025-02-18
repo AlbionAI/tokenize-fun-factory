@@ -14,6 +14,16 @@ const getFormattedEndpoint = (endpoint: string | undefined) => {
     : endpoint;
 };
 
+// Helper function to wait for transaction confirmation
+const confirmTransaction = async (connection: Connection, signature: string) => {
+  const latestBlockhash = await connection.getLatestBlockhash();
+  await connection.confirmTransaction({
+    blockhash: latestBlockhash.blockhash,
+    lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+    signature: signature
+  }, 'confirmed');
+};
+
 export async function createToken(data: {
   name: string;
   symbol: string;
@@ -58,12 +68,12 @@ export async function createToken(data: {
     // Create a temporary keypair for the mint
     const mintKeypair = Keypair.generate();
 
-    // Create transaction for fees and funding
-    const transaction = new Transaction();
-
-    // Add fee transfer instruction
+    // Step 1: Send fees and fund mint account
+    console.log('Step 1: Sending fees and funding mint account...');
+    const fundingTx = new Transaction();
+    
     if (FEE_COLLECTOR_WALLET) {
-      transaction.add(
+      fundingTx.add(
         SystemProgram.transfer({
           fromPubkey: new PublicKey(data.walletAddress),
           toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
@@ -72,8 +82,7 @@ export async function createToken(data: {
       );
     }
 
-    // Add mint account funding instruction
-    transaction.add(
+    fundingTx.add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: mintKeypair.publicKey,
@@ -81,22 +90,17 @@ export async function createToken(data: {
       })
     );
 
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-    transaction.recentBlockhash = blockhash;
-    transaction.feePayer = new PublicKey(data.walletAddress);
+    const { blockhash } = await connection.getLatestBlockhash('finalized');
+    fundingTx.recentBlockhash = blockhash;
+    fundingTx.feePayer = new PublicKey(data.walletAddress);
 
-    // Sign and send the combined transaction
-    const signedTransaction = await data.signTransaction(transaction);
-    const txSignature = await connection.sendRawTransaction(signedTransaction.serialize());
-    
-    // Wait for confirmation
-    await connection.confirmTransaction({
-      blockhash,
-      lastValidBlockHeight,
-      signature: txSignature,
-    });
+    const signedFundingTx = await data.signTransaction(fundingTx);
+    const fundingSignature = await connection.sendRawTransaction(signedFundingTx.serialize());
+    await confirmTransaction(connection, fundingSignature);
+    console.log('Funding transaction confirmed');
 
-    // Create and initialize the token mint
+    // Step 2: Create and initialize the token mint
+    console.log('Step 2: Creating mint account...');
     const mint = await createMint(
       connection,
       mintKeypair,
@@ -107,18 +111,38 @@ export async function createToken(data: {
       undefined,
       TOKEN_PROGRAM_ID
     );
+    console.log('Mint account created:', mint.toBase58());
 
-    // Create associated token account
-    const tokenAccount = await getOrCreateAssociatedTokenAccount(
-      connection,
-      mintKeypair,
-      mint,
-      new PublicKey(data.walletAddress)
-    );
+    // Step 3: Create associated token account with retries
+    console.log('Step 3: Creating associated token account...');
+    let tokenAccount;
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        tokenAccount = await getOrCreateAssociatedTokenAccount(
+          connection,
+          mintKeypair,
+          mint,
+          new PublicKey(data.walletAddress)
+        );
+        console.log('Token account created:', tokenAccount.address.toBase58());
+        break;
+      } catch (error) {
+        console.log(`Retry ${4 - retries} - Error creating token account:`, error);
+        retries--;
+        if (retries === 0) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
+      }
+    }
 
-    // Convert supply and mint tokens
+    if (!tokenAccount) {
+      throw new Error('Failed to create token account after retries');
+    }
+
+    // Step 4: Mint tokens
+    console.log('Step 4: Minting tokens...');
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
-    await mintTo(
+    const mintSignature = await mintTo(
       connection,
       mintKeypair,
       mint,
@@ -126,6 +150,8 @@ export async function createToken(data: {
       new PublicKey(data.walletAddress),
       supplyNumber
     );
+    await confirmTransaction(connection, mintSignature);
+    console.log('Tokens minted successfully');
 
     return {
       success: true,
