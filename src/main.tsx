@@ -15,14 +15,8 @@ declare global {
 }
 
 window.process = {
-  ...window.process,
   env: { NODE_DEBUG: '' }
 };
-
-// Polyfill for Buffer
-if (!window.Buffer) {
-  window.Buffer = Buffer;
-}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
