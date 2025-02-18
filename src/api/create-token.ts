@@ -212,17 +212,15 @@ export async function createToken(data: {
     const mintRent = Math.max(calculatedMintRent, MIN_MINT_RENT_LAMPORTS);
     const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE);
     
-    // Base service fee in SOL
-    let baseFee = 0.05;
+    let serviceFee = 0.05;
     if (data.authorities) {
-      if (data.authorities.freezeAuthority) baseFee += 0.1;
-      if (data.authorities.mintAuthority) baseFee += 0.1;
-      if (data.authorities.updateAuthority) baseFee += 0.1;
+      if (data.authorities.freezeAuthority) serviceFee += 0.1;
+      if (data.authorities.mintAuthority) serviceFee += 0.1;
+      if (data.authorities.updateAuthority) serviceFee += 0.1;
     }
-    if (data.creatorName) baseFee += 0.1;
+    if (data.creatorName) serviceFee += 0.1;
     
-    // Convert SOL to lamports and round to nearest integer
-    const serviceFeeInLamports = Math.round(baseFee * LAMPORTS_PER_SOL);
+    const serviceFeeInLamports = serviceFee * 1e9;
 
     const TX_FEE = 5000;
     const NUM_TRANSACTIONS = 4;
