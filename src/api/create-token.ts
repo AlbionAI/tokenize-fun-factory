@@ -1,3 +1,4 @@
+
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
@@ -164,11 +165,19 @@ export async function createToken(data: {
     
     const serviceFeeInLamports = serviceFee * 1e9;
 
-    // Calculate transaction fees (estimate 5000 lamports per transaction, we need 3 transactions)
-    const estimatedTxFees = 5000 * 3;
+    // Calculate transaction fees (estimate 10000 lamports per transaction, we need 4 transactions)
+    const estimatedTxFees = 10000 * 4; // Increased from 5000 to 10000 per tx and from 3 to 4 txs
 
-    // Calculate total required balance
-    const totalRequired = serviceFeeInLamports + mintRent + tokenAccountRent + estimatedTxFees + metadataRent;
+    // Add buffer for metadata creation (additional 10000 lamports)
+    const metadataBuffer = 10000;
+
+    // Calculate total required balance with additional buffer
+    const totalRequired = serviceFeeInLamports + 
+                         mintRent + 
+                         tokenAccountRent + 
+                         metadataRent +
+                         estimatedTxFees + 
+                         metadataBuffer;
 
     console.log("Cost breakdown (in lamports):", {
       serviceFee: serviceFeeInLamports,
@@ -176,6 +185,7 @@ export async function createToken(data: {
       tokenAccountRent,
       metadataRent,
       estimatedTxFees,
+      metadataBuffer,
       totalRequired
     });
 
@@ -190,7 +200,8 @@ export async function createToken(data: {
         `- Mint account rent: ${(mintRent / 1e9).toFixed(4)} SOL\n` +
         `- Token account rent: ${(tokenAccountRent / 1e9).toFixed(4)} SOL\n` +
         `- Metadata rent: ${(metadataRent / 1e9).toFixed(4)} SOL\n` +
-        `- Transaction fees: ${(estimatedTxFees / 1e9).toFixed(4)} SOL`
+        `- Transaction fees: ${(estimatedTxFees / 1e9).toFixed(4)} SOL\n` +
+        `- Metadata buffer: ${(metadataBuffer / 1e9).toFixed(4)} SOL`
       );
     }
 
