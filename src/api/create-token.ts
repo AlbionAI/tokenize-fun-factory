@@ -1,7 +1,7 @@
 
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { Metaplex, walletAdapterIdentity } from '@metaplex-foundation/js';
+import { Metaplex, walletAdapterIdentity, TokenStandard } from '@metaplex-foundation/js';
 
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
 const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
@@ -149,7 +149,7 @@ export async function createToken(data: {
       name: data.name,
       symbol: data.symbol,
       sellerFeeBasisPoints: 0,
-      tokenStandard: "fungible",
+      tokenStandard: TokenStandard.Fungible,
       mint: mintKeypair,
       creators: data.creatorName ? [{
         address: new PublicKey(data.walletAddress),
