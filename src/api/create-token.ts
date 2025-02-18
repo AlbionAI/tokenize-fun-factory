@@ -69,43 +69,39 @@ const createMetadataInstruction = (
     }
   });
 
-  // Calculate buffer size (fixed size + variable parts)
+  // Calculate buffer size
   const nameBuffer = Buffer.from(name);
   const symbolBuffer = Buffer.from(symbol);
   const uriBuffer = Buffer.from(uri);
-  
-  const bufferSize = 1 + // Instruction discriminator
+
+  // Version 1 metadata requires a fixed size buffer
+  const bufferSize = 1 + // Version
     32 + // Name max length
     10 + // Symbol max length
     200 + // URI max length
-    2 + // Seller fee basis points (u16)
-    1 + // Creator present bool
+    1 + // Creators option
     (creatorAddress ? 34 : 0); // Creator data if present
 
   const buffer = Buffer.alloc(bufferSize);
   let offset = 0;
 
-  // Write instruction discriminator (create metadata instruction)
-  buffer.writeUInt8(33, offset);
+  // Write version (1)
+  buffer.writeUInt8(1, offset);
   offset += 1;
 
-  // Write name with length prefix
+  // Write name with padding
   nameBuffer.copy(buffer, offset, 0, Math.min(nameBuffer.length, 32));
   offset += 32;
 
-  // Write symbol with length prefix
+  // Write symbol with padding
   symbolBuffer.copy(buffer, offset, 0, Math.min(symbolBuffer.length, 10));
   offset += 10;
 
-  // Write URI with length prefix
+  // Write URI with padding
   uriBuffer.copy(buffer, offset, 0, Math.min(uriBuffer.length, 200));
   offset += 200;
 
-  // Write seller fee basis points (0)
-  buffer.writeUInt16LE(0, offset);
-  offset += 2;
-
-  // Write creator presence
+  // Write creators present flag
   buffer.writeUInt8(creatorAddress ? 1 : 0, offset);
   offset += 1;
 
@@ -163,6 +159,11 @@ const createMetadataInstruction = (
       },
       {
         pubkey: TOKEN_METADATA_PROGRAM_ID,
+        isSigner: false,
+        isWritable: false,
+      },
+      {
+        pubkey: TOKEN_PROGRAM_ID,
         isSigner: false,
         isWritable: false,
       },
