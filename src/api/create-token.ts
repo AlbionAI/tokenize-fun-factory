@@ -267,7 +267,6 @@ export async function createToken(data: {
     const signedTransaction = await data.signTransaction(feeTransaction);
     const feeSignature = await connection.sendRawTransaction(signedTransaction.serialize());
     
-    console.log("Waiting for fee transaction confirmation...");
     await connection.confirmTransaction({
       signature: feeSignature,
       blockhash: latestBlockhash.blockhash,
@@ -279,14 +278,45 @@ export async function createToken(data: {
     // Step 2: Create and initialize mint
     const mintKeypair = Keypair.generate();
     console.log("Creating mint account:", mintKeypair.publicKey.toBase58());
-    
+
+    // Create mint account with user wallet as payer
+    const createMintTransaction = new Transaction().add(
+      SystemProgram.createAccount({
+        fromPubkey: new PublicKey(data.walletAddress),
+        newAccountPubkey: mintKeypair.publicKey,
+        space: MINT_SPACE,
+        lamports: mintRent,
+        programId: TOKEN_PROGRAM_ID,
+      })
+    );
+
+    const mintBlockhash = await connection.getLatestBlockhash('finalized');
+    createMintTransaction.recentBlockhash = mintBlockhash.blockhash;
+    createMintTransaction.lastValidBlockHeight = mintBlockhash.lastValidBlockHeight;
+    createMintTransaction.feePayer = new PublicKey(data.walletAddress);
+    createMintTransaction.sign(mintKeypair);
+
+    console.log("Sending mint account creation transaction...");
+    const signedMintTransaction = await data.signTransaction(createMintTransaction);
+    const mintSignature = await connection.sendRawTransaction(signedMintTransaction.serialize());
+
+    await connection.confirmTransaction({
+      signature: mintSignature,
+      blockhash: mintBlockhash.blockhash,
+      lastValidBlockHeight: mintBlockhash.lastValidBlockHeight
+    });
+
+    // Initialize the mint
     const mint = await createMint(
       connection,
-      mintKeypair,
+      {
+        publicKey: new PublicKey(data.walletAddress),
+        signTransaction: data.signTransaction
+      },
       new PublicKey(data.walletAddress),
       data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
       data.decimals,
-      undefined,
+      mintKeypair,
       undefined,
       TOKEN_PROGRAM_ID
     );
@@ -316,7 +346,6 @@ export async function createToken(data: {
     const signedMetadataTransaction = await data.signTransaction(createMetadataIx);
     const metadataSignature = await connection.sendRawTransaction(signedMetadataTransaction.serialize());
     
-    console.log("Waiting for metadata transaction confirmation...");
     await connection.confirmTransaction({
       signature: metadataSignature,
       blockhash: metadataBlockhash.blockhash,
@@ -327,7 +356,10 @@ export async function createToken(data: {
     console.log("Creating Associated Token Account and minting tokens...");
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
-      mintKeypair,
+      {
+        publicKey: new PublicKey(data.walletAddress),
+        signTransaction: data.signTransaction
+      },
       mint,
       new PublicKey(data.walletAddress)
     );
@@ -335,7 +367,10 @@ export async function createToken(data: {
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
     await mintTo(
       connection,
-      mintKeypair,
+      {
+        publicKey: new PublicKey(data.walletAddress),
+        signTransaction: data.signTransaction
+      },
       mint,
       tokenAccount.address,
       new PublicKey(data.walletAddress),
