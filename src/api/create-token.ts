@@ -1,13 +1,6 @@
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
-import { 
-  createMetadataAccountV3, 
-  PROGRAM_ID as MPL_TOKEN_METADATA_PROGRAM_ID,
-  CreateMetadataAccountV3InstructionAccounts,
-  CreateMetadataAccountV3InstructionArgs,
-  DataV2
-} from '@metaplex-foundation/mpl-token-metadata';
 
 // Your fee collector wallet address
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
@@ -15,8 +8,8 @@ const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
 // QuickNode Endpoint (using dedicated mainnet endpoint)
 const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
 
-// Token Metadata Program ID
-const TOKEN_METADATA_PROGRAM_ID = MPL_TOKEN_METADATA_PROGRAM_ID;
+// Token Metadata Program ID (hardcoded since we can't import it correctly)
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
 
 // Ensure the endpoint starts with https://
 const getFormattedEndpoint = (endpoint: string | undefined) => {
@@ -30,7 +23,7 @@ const getFormattedEndpoint = (endpoint: string | undefined) => {
 };
 
 // Function to derive metadata PDA
-const getMetadataPDA = (mint: PublicKey) => {
+const getMetadataPDA = (mint: PublicKey): PublicKey => {
   const [publicKey] = PublicKey.findProgramAddressSync(
     [
       Buffer.from('metadata'),
@@ -240,14 +233,7 @@ export async function createToken(data: {
     const mintKeypair = Keypair.generate();
     
     // Get metadata PDA
-    const [metadataAddress] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from('metadata'),
-        TOKEN_METADATA_PROGRAM_ID.toBuffer(),
-        mintKeypair.publicKey.toBuffer(),
-      ],
-      TOKEN_METADATA_PROGRAM_ID
-    );
+    const metadataAddress = getMetadataPDA(mintKeypair.publicKey);
 
     // Fund the metadata account
     console.log("Funding metadata account with exact amount:", METADATA_REQUIRED_LAMPORTS);
@@ -316,59 +302,24 @@ export async function createToken(data: {
       TOKEN_PROGRAM_ID
     );
 
-    // Create metadata with updated instruction
-    const metadataData: DataV2 = {
-      name: data.name,
-      symbol: data.symbol,
-      uri: '',
-      sellerFeeBasisPoints: 0,
-      creators: data.creatorName ? [{
-        address: new PublicKey(data.walletAddress),
-        verified: false,
-        share: 100,
-      }] : null,
-      collection: null,
-      uses: null,
-    };
-
-    // Create signer for the wallet
-    const walletSigner = {
-      publicKey: new PublicKey(data.walletAddress),
-      signTransaction: data.signTransaction,
-      signAllTransactions: async (txs: Transaction[]) => {
-        return Promise.all(txs.map(tx => data.signTransaction(tx)));
-      },
-      signMessage: async (message: Uint8Array) => {
-        throw new Error('signMessage not implemented');
-      },
-    };
-
-    const accounts: CreateMetadataAccountV3InstructionAccounts = {
-      metadata: metadataAddress,
+    // Create metadata instruction
+    const createMetadataIx = createMetadataInstruction(
+      metadataAddress,
       mint,
-      mintAuthority: walletSigner,
-      payer: walletSigner,
-      updateAuthority: walletSigner.publicKey,
-    };
-
-    const args: CreateMetadataAccountV3InstructionArgs = {
-      data: metadataData,
-      isMutable: true,
-      collectionDetails: null,
-    };
-
-    const createMetadataInstruction = createMetadataAccountV3(
-      accounts,
-      args
+      new PublicKey(data.walletAddress),
+      new PublicKey(data.walletAddress),
+      new PublicKey(data.walletAddress),
+      data.name,
+      data.symbol,
+      data.creatorName ? data.walletAddress : undefined
     );
 
     // Create and send metadata transaction
-    const metadataTransaction = new Transaction().add(createMetadataInstruction);
     const metadataInstrBlockhash = await connection.getLatestBlockhash('finalized');
-    metadataTransaction.recentBlockhash = metadataInstrBlockhash.blockhash;
-    metadataTransaction.feePayer = new PublicKey(data.walletAddress);
+    createMetadataIx.recentBlockhash = metadataInstrBlockhash.blockhash;
+    createMetadataIx.feePayer = new PublicKey(data.walletAddress);
 
-    const signedMetadataTransaction = await data.signTransaction(metadataTransaction);
+    const signedMetadataTransaction = await data.signTransaction(createMetadataIx);
     const metadataSignature = await connection.sendRawTransaction(signedMetadataTransaction.serialize());
     await connection.confirmTransaction({
       signature: metadataSignature,
