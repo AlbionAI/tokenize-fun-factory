@@ -1,4 +1,3 @@
-
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
@@ -122,7 +121,7 @@ export async function createToken(data: {
     const formattedEndpoint = getFormattedEndpoint(QUICKNODE_ENDPOINT);
     const connection = new Connection(formattedEndpoint, {
       commitment: 'confirmed',
-      rateLimit: 10 // Limit requests per second
+      confirmTransactionInitialTimeout: 120000 // 2 minutes timeout
     });
 
     // Get the latest blockhash once for all transactions
