@@ -141,11 +141,15 @@ export async function createToken(data: {
     const TOKEN_ACCOUNT_SPACE = 165;
     const METADATA_SPACE = 679;
     
-    // The exact amount needed for metadata (updated from 1461680 to 1761680)
+    // The exact amount needed for metadata
     const METADATA_REQUIRED_LAMPORTS = 1761680;
-    
-    // Get rent exemptions
-    const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SPACE);
+
+    // Minimum mint rent threshold
+    const MIN_MINT_RENT_LAMPORTS = 2461600;
+
+    // Get rent exemptions with minimum threshold for mint rent
+    const calculatedMintRent = await connection.getMinimumBalanceForRentExemption(MINT_SPACE);
+    const mintRent = Math.max(calculatedMintRent, MIN_MINT_RENT_LAMPORTS);
     const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE);
     
     // Calculate service fee
