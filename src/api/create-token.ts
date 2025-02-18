@@ -1,4 +1,3 @@
-
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
@@ -39,47 +38,40 @@ const createMetadataInstruction = (
   symbol: string,
   creatorAddress?: string
 ) => {
-  // Create a buffer to store our instruction data
-  // Calculate total size: 1 (instruction) + 32 (name) + 10 (symbol) + 200 (uri) + 2 (seller fee) + 1 (has creators bool) + (optional creator data)
-  const creatorSize = creatorAddress ? 34 : 0; // 32 (pubkey) + 1 (verified) + 1 (share)
-  const bufferSize = 1 + 32 + 10 + 200 + 2 + 1 + creatorSize;
-  const buffer = Buffer.alloc(bufferSize);
+  const metadataData = {
+    name: name.substring(0, 32).padEnd(32),
+    symbol: symbol.substring(0, 10).padEnd(10),
+    uri: ''.padEnd(200),
+    sellerFeeBasisPoints: 0,
+    creators: creatorAddress ? [{
+      address: new PublicKey(creatorAddress),
+      verified: 0,
+      share: 100,
+    }] : null,
+  };
+
+  const buffer = Buffer.alloc(1 + 32 + 10 + 200 + 2 + 1 + (creatorAddress ? 34 : 0));
   let offset = 0;
 
-  // Write instruction discriminator (33 for CreateMetadataAccountV3)
-  buffer.writeUInt8(33, offset);
+  buffer.writeUInt8(0, offset); // Create Metadata instruction
   offset += 1;
 
-  // Write name (padded to 32 bytes)
-  const nameBytes = Buffer.from(name);
-  const paddedName = Buffer.alloc(32);
-  nameBytes.copy(paddedName, 0, 0, Math.min(nameBytes.length, 32));
-  paddedName.copy(buffer, offset);
+  buffer.write(metadataData.name, offset, 'utf8');
   offset += 32;
-
-  // Write symbol (padded to 10 bytes)
-  const symbolBytes = Buffer.from(symbol);
-  const paddedSymbol = Buffer.alloc(10);
-  symbolBytes.copy(paddedSymbol, 0, 0, Math.min(symbolBytes.length, 10));
-  paddedSymbol.copy(buffer, offset);
+  
+  buffer.write(metadataData.symbol, offset, 'utf8');
   offset += 10;
-
-  // Write uri (padded to 200 bytes)
-  const uriBytes = Buffer.from('');
-  const paddedUri = Buffer.alloc(200);
-  uriBytes.copy(paddedUri, 0, 0, Math.min(uriBytes.length, 200));
-  paddedUri.copy(buffer, offset);
+  
+  buffer.write(metadataData.uri, offset, 'utf8');
   offset += 200;
 
-  // Write seller fee basis points (u16)
-  buffer.writeUInt16LE(0, offset);
+  buffer.writeUInt16LE(metadataData.sellerFeeBasisPoints, offset);
   offset += 2;
 
   // Write creator presence
   buffer.writeUInt8(creatorAddress ? 1 : 0, offset);
   offset += 1;
 
-  // Write creator data if present
   if (creatorAddress) {
     const creatorPubkey = new PublicKey(creatorAddress);
     creatorPubkey.toBuffer().copy(buffer, offset);
@@ -121,16 +113,11 @@ const createMetadataInstruction = (
       },
       {
         pubkey: updateAuthority,
-        isSigner: false,
+        isSigner: true,
         isWritable: false,
       },
       {
         pubkey: SystemProgram.programId,
-        isSigner: false,
-        isWritable: false,
-      },
-      {
-        pubkey: TOKEN_METADATA_PROGRAM_ID,
         isSigner: false,
         isWritable: false,
       },
