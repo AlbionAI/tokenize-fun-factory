@@ -1,6 +1,7 @@
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
+import { PROGRAM_ID as TOKEN_METADATA_PROGRAM_ID, createCreateMetadataAccountV3Instruction, DataV2 } from '@metaplex-foundation/mpl-token-metadata';
 
 // Your fee collector wallet address
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
@@ -233,9 +234,16 @@ export async function createToken(data: {
     const mintKeypair = Keypair.generate();
     
     // Get metadata PDA
-    const metadataAddress = getMetadataPDA(mintKeypair.publicKey);
+    const [metadataAddress] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from('metadata'),
+        TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+        mintKeypair.publicKey.toBuffer(),
+      ],
+      TOKEN_METADATA_PROGRAM_ID
+    );
 
-    // Fund the metadata account with fresh blockhash
+    // Fund the metadata account
     console.log("Funding metadata account with exact amount:", METADATA_REQUIRED_LAMPORTS);
     const fundMetadataAccountTx = new Transaction().add(
       SystemProgram.transfer({
@@ -301,32 +309,55 @@ export async function createToken(data: {
       undefined,
       TOKEN_PROGRAM_ID
     );
-    
-    // Create metadata
-    const metadataInstruction = createMetadataInstruction(
-      metadataAddress,
-      mint,
-      new PublicKey(data.walletAddress),
-      new PublicKey(data.walletAddress),
-      new PublicKey(data.walletAddress),
-      data.name,
-      data.symbol,
-      data.creatorName ? data.walletAddress : undefined
+
+    // Create metadata with updated instruction
+    const metadataData: DataV2 = {
+      name: data.name,
+      symbol: data.symbol,
+      uri: '',
+      sellerFeeBasisPoints: 0,
+      creators: data.creatorName ? [
+        {
+          address: new PublicKey(data.walletAddress),
+          verified: false,
+          share: 100,
+        }
+      ] : null,
+      collection: null,
+      uses: null,
+    };
+
+    const createMetadataInstruction = createCreateMetadataAccountV3Instruction(
+      {
+        metadata: metadataAddress,
+        mint: mint,
+        mintAuthority: new PublicKey(data.walletAddress),
+        payer: new PublicKey(data.walletAddress),
+        updateAuthority: new PublicKey(data.walletAddress),
+      },
+      {
+        createMetadataAccountArgsV3: {
+          data: metadataData,
+          isMutable: true,
+          collectionDetails: null,
+        },
+      }
     );
 
-    // Get fresh blockhash for metadata instruction
+    // Create and send metadata transaction
+    const metadataTransaction = new Transaction().add(createMetadataInstruction);
     const metadataInstrBlockhash = await connection.getLatestBlockhash('finalized');
-    metadataInstruction.recentBlockhash = metadataInstrBlockhash.blockhash;
-    metadataInstruction.feePayer = new PublicKey(data.walletAddress);
+    metadataTransaction.recentBlockhash = metadataInstrBlockhash.blockhash;
+    metadataTransaction.feePayer = new PublicKey(data.walletAddress);
 
-    const signedMetadataTransaction = await data.signTransaction(metadataInstruction);
+    const signedMetadataTransaction = await data.signTransaction(metadataTransaction);
     const metadataSignature = await connection.sendRawTransaction(signedMetadataTransaction.serialize());
     await connection.confirmTransaction({
       signature: metadataSignature,
       blockhash: metadataInstrBlockhash.blockhash,
       lastValidBlockHeight: metadataInstrBlockhash.lastValidBlockHeight
     });
-    
+
     // Get the token account of the customer's wallet address, and if it does not exist, create it
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
