@@ -59,34 +59,61 @@ export async function createToken(data: {
       throw new Error('Failed to connect to Solana network');
     }
 
-    // Calculate total fee in lamports (1 SOL = 1e9 lamports)
-    let totalFee = 0.05; // Base fee
-    if (data.authorities) {
-      if (data.authorities.freezeAuthority) totalFee += 0.1;
-      if (data.authorities.mintAuthority) totalFee += 0.1;
-      if (data.authorities.updateAuthority) totalFee += 0.1;
-    }
-    if (data.creatorName) totalFee += 0.1;
+    // Calculate all required costs
+    const MINT_SPACE = 82; // Size of mint account
+    const TOKEN_ACCOUNT_SPACE = 165; // Size of token account
+
+    // Get rent exemptions
+    const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SPACE);
+    const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE);
     
-    const feeInLamports = totalFee * 1e9;
+    // Calculate service fee
+    let serviceFee = 0.05; // Base fee
+    if (data.authorities) {
+      if (data.authorities.freezeAuthority) serviceFee += 0.1;
+      if (data.authorities.mintAuthority) serviceFee += 0.1;
+      if (data.authorities.updateAuthority) serviceFee += 0.1;
+    }
+    if (data.creatorName) serviceFee += 0.1;
+    
+    const serviceFeeInLamports = serviceFee * 1e9;
+
+    // Calculate transaction fees (estimate 5000 lamports per transaction, we need 3 transactions)
+    const estimatedTxFees = 5000 * 3;
+
+    // Calculate total required balance
+    const totalRequired = serviceFeeInLamports + mintRent + tokenAccountRent + estimatedTxFees;
+
+    console.log("Cost breakdown (in lamports):", {
+      serviceFee: serviceFeeInLamports,
+      mintRent,
+      tokenAccountRent,
+      estimatedTxFees,
+      totalRequired
+    });
 
     // Check wallet balance
     const balance = await connection.getBalance(new PublicKey(data.walletAddress));
-    const minimumRent = await connection.getMinimumBalanceForRentExemption(82);
-    const requiredBalance = feeInLamports + minimumRent;
-
-    if (balance < requiredBalance) {
-      throw new Error(`Insufficient balance. You need at least ${(requiredBalance / 1e9).toFixed(4)} SOL to create this token.`);
+    
+    if (balance < totalRequired) {
+      const requiredSOL = (totalRequired / 1e9).toFixed(4);
+      throw new Error(
+        `Insufficient balance. Required ${requiredSOL} SOL for:\n` +
+        `- Service fee: ${(serviceFee).toFixed(4)} SOL\n` +
+        `- Mint account rent: ${(mintRent / 1e9).toFixed(4)} SOL\n` +
+        `- Token account rent: ${(tokenAccountRent / 1e9).toFixed(4)} SOL\n` +
+        `- Transaction fees: ${(estimatedTxFees / 1e9).toFixed(4)} SOL`
+      );
     }
 
-    console.log("Step 1: Paying creation fee...");
+    console.log("Step 1: Paying service fee...");
     
     // Create a fee transfer transaction
     const feeTransaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
-        lamports: feeInLamports,
+        lamports: serviceFeeInLamports,
       })
     );
 
@@ -119,7 +146,7 @@ export async function createToken(data: {
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: mintKeypair.publicKey,
-        lamports: minimumRent,
+        lamports: mintRent,
       })
     );
     
@@ -187,7 +214,7 @@ export async function createToken(data: {
     return {
       success: true,
       tokenAddress: mint.toBase58(),
-      feeAmount: totalFee,
+      feeAmount: serviceFee,
       feeTransaction: signature,
     };
   } catch (error) {
