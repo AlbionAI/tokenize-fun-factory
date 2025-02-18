@@ -28,6 +28,19 @@ const getMetadataPDA = (mint: PublicKey): PublicKey => {
   return publicKey;
 };
 
+const fetchMetadata = async (connection: Connection, metadataPDA: PublicKey) => {
+  try {
+    const accountInfo = await connection.getAccountInfo(metadataPDA);
+    if (!accountInfo) {
+      throw new Error('Metadata account not found');
+    }
+    return accountInfo;
+  } catch (error) {
+    console.error('Error fetching metadata:', error);
+    throw error;
+  }
+};
+
 const createMetadataInstruction = (
   metadata: PublicKey,
   mint: PublicKey,
@@ -38,12 +51,21 @@ const createMetadataInstruction = (
   symbol: string,
   creatorAddress?: string
 ) => {
-  // Create metadata JSON
+  // Create metadata JSON following Metaplex standard
   const uri = JSON.stringify({
     name,
     symbol,
     description: `${name} token`,
     image: '', // Optional: Add image URL if available
+    attributes: [],
+    properties: {
+      files: [],
+      creators: creatorAddress ? [{
+        address: creatorAddress,
+        verified: true,
+        share: 100
+      }] : []
+    }
   });
 
   // Calculate buffer size
