@@ -210,32 +210,32 @@ export async function createToken(data: {
       })
     );
 
-    // Get the recent blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
-    feeTransaction.recentBlockhash = blockhash;
-    feeTransaction.lastValidBlockHeight = lastValidBlockHeight;
+    // Get fresh blockhash for fee transaction
+    const feeBlockhash = await connection.getLatestBlockhash('finalized');
+    feeTransaction.recentBlockhash = feeBlockhash.blockhash;
+    feeTransaction.lastValidBlockHeight = feeBlockhash.lastValidBlockHeight;
     feeTransaction.feePayer = new PublicKey(data.walletAddress);
 
-    // Have the user sign the transaction
+    // Sign and send fee transaction
     const signedTransaction = await data.signTransaction(feeTransaction);
-
-    // Send and confirm fee transaction
-    const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+    const feeSignature = await connection.sendRawTransaction(signedTransaction.serialize());
+    
+    // Wait for fee transaction confirmation
     await connection.confirmTransaction({
-      signature,
-      blockhash,
-      lastValidBlockHeight
+      signature: feeSignature,
+      blockhash: feeBlockhash.blockhash,
+      lastValidBlockHeight: feeBlockhash.lastValidBlockHeight
     });
 
-    console.log("Fee payment confirmed:", signature);
+    console.log("Fee payment confirmed:", feeSignature);
 
     // Create a temporary keypair for the mint operation
     const mintKeypair = Keypair.generate();
     
-    // Get metadata PDA before creating transactions
+    // Get metadata PDA
     const metadataAddress = getMetadataPDA(mintKeypair.publicKey);
 
-    // Fund the metadata account with the exact required amount
+    // Fund the metadata account with fresh blockhash
     console.log("Funding metadata account with exact amount:", METADATA_REQUIRED_LAMPORTS);
     const fundMetadataAccountTx = new Transaction().add(
       SystemProgram.transfer({
@@ -245,22 +245,27 @@ export async function createToken(data: {
       })
     );
 
-    fundMetadataAccountTx.recentBlockhash = blockhash;
+    // Get fresh blockhash for metadata funding
+    const metadataBlockhash = await connection.getLatestBlockhash('finalized');
+    fundMetadataAccountTx.recentBlockhash = metadataBlockhash.blockhash;
+    fundMetadataAccountTx.lastValidBlockHeight = metadataBlockhash.lastValidBlockHeight;
     fundMetadataAccountTx.feePayer = new PublicKey(data.walletAddress);
     
     const signedMetadataFundingTx = await data.signTransaction(fundMetadataAccountTx);
     const metadataFundingSignature = await connection.sendRawTransaction(signedMetadataFundingTx.serialize());
+    
+    // Wait for metadata funding confirmation
     await connection.confirmTransaction({
       signature: metadataFundingSignature,
-      blockhash,
-      lastValidBlockHeight
+      blockhash: metadataBlockhash.blockhash,
+      lastValidBlockHeight: metadataBlockhash.lastValidBlockHeight
     });
 
     console.log("Metadata account funded:", metadataFundingSignature);
 
     console.log("Step 2: Funding mint account...");
     
-    // Fund the mint keypair with the minimum rent exemption
+    // Fund the mint account with fresh blockhash
     const fundMintAccountTx = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
@@ -269,15 +274,20 @@ export async function createToken(data: {
       })
     );
     
-    fundMintAccountTx.recentBlockhash = blockhash;
+    // Get fresh blockhash for mint funding
+    const mintFundBlockhash = await connection.getLatestBlockhash('finalized');
+    fundMintAccountTx.recentBlockhash = mintFundBlockhash.blockhash;
+    fundMintAccountTx.lastValidBlockHeight = mintFundBlockhash.lastValidBlockHeight;
     fundMintAccountTx.feePayer = new PublicKey(data.walletAddress);
     
     const signedFundingTx = await data.signTransaction(fundMintAccountTx);
     const fundingSignature = await connection.sendRawTransaction(signedFundingTx.serialize());
+    
+    // Wait for mint funding confirmation
     await connection.confirmTransaction({
       signature: fundingSignature,
-      blockhash,
-      lastValidBlockHeight
+      blockhash: mintFundBlockhash.blockhash,
+      lastValidBlockHeight: mintFundBlockhash.lastValidBlockHeight
     });
     
     // Create token mint with selected authorities
