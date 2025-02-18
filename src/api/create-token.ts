@@ -128,36 +128,43 @@ export async function createToken(data: {
 
     console.log("Fee payment confirmed:", feeSignature);
 
-    // Create the mint and metadata
-    const { token } = await metaplex.tokens().createV1({
+    // Create the mint account
+    const mintKeypair = Keypair.generate();
+    
+    // Create the mint with metadata
+    const { nft } = await metaplex.nfts().create({
+      uri: 'https://arweave.net/',
+      name: data.name,
+      symbol: data.symbol,
+      sellerFeeBasisPoints: 0,
+      updateAuthority: new PublicKey(data.walletAddress),
       mintAuthority: new PublicKey(data.walletAddress),
       freezeAuthority: data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
       decimals: data.decimals,
-      name: data.name,
-      symbol: data.symbol,
-      uri: 'https://arweave.net/',
-      sellerFeeBasisPoints: 0,
+      useNewMint: mintKeypair,
+      tokenStandard: 1, // Fungible
       creators: data.creatorName ? [{
         address: new PublicKey(data.walletAddress),
         share: 100,
+        verified: false
       }] : undefined,
     });
 
-    console.log("Token and metadata created:", token.mint.address.toBase58());
+    console.log("Token and metadata created:", nft.mint.address.toBase58());
 
     // Create token account and mint tokens
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
-      Keypair.generate(), // temporary keypair for the transaction
-      token.mint.address,
+      mintKeypair,
+      nft.mint.address,
       new PublicKey(data.walletAddress)
     );
 
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
     await mintTo(
       connection,
-      Keypair.generate(), // temporary keypair for the transaction
-      token.mint.address,
+      mintKeypair,
+      nft.mint.address,
       tokenAccount.address,
       new PublicKey(data.walletAddress),
       supplyNumber
@@ -167,7 +174,7 @@ export async function createToken(data: {
 
     return {
       success: true,
-      tokenAddress: token.mint.address.toBase58(),
+      tokenAddress: nft.mint.address.toBase58(),
       feeAmount: baseFee,
       feeTransaction: feeSignature,
     };
