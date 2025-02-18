@@ -314,15 +314,17 @@ export async function createToken(data: {
       data.creatorName ? data.walletAddress : undefined
     );
 
-    metadataInstruction.recentBlockhash = blockhash;
+    // Get fresh blockhash for metadata instruction
+    const metadataInstrBlockhash = await connection.getLatestBlockhash('finalized');
+    metadataInstruction.recentBlockhash = metadataInstrBlockhash.blockhash;
     metadataInstruction.feePayer = new PublicKey(data.walletAddress);
 
     const signedMetadataTransaction = await data.signTransaction(metadataInstruction);
     const metadataSignature = await connection.sendRawTransaction(signedMetadataTransaction.serialize());
     await connection.confirmTransaction({
       signature: metadataSignature,
-      blockhash,
-      lastValidBlockHeight
+      blockhash: metadataInstrBlockhash.blockhash,
+      lastValidBlockHeight: metadataInstrBlockhash.lastValidBlockHeight
     });
     
     // Get the token account of the customer's wallet address, and if it does not exist, create it
@@ -358,7 +360,7 @@ export async function createToken(data: {
       tokenAddress: mint.toBase58(),
       metadataAddress: metadataAddress.toBase58(),
       feeAmount: serviceFee,
-      feeTransaction: signature,
+      feeTransaction: feeSignature,
     };
   } catch (error) {
     console.error('Error in createToken:', error instanceof Error ? error.message : 'Unknown error');
