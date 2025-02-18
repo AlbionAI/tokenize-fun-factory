@@ -141,8 +141,8 @@ export async function createToken(data: {
     const TOKEN_ACCOUNT_SPACE = 165;
     const METADATA_SPACE = 679;
     
-    // The exact amount needed for metadata (from the error message)
-    const METADATA_REQUIRED_LAMPORTS = 1461600;
+    // The exact amount needed for metadata (corrected from 1461600 to 1461680)
+    const METADATA_REQUIRED_LAMPORTS = 1461680;
     
     // Get rent exemptions
     const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SPACE);
