@@ -1,4 +1,4 @@
-import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
 
@@ -39,68 +39,92 @@ const createMetadataInstruction = (
   creatorAddress?: string
 ) => {
   const metadataData = {
-    name,
-    symbol,
-    uri: '',
+    name: name.padEnd(32),
+    symbol: symbol.padEnd(10),
+    uri: ''.padEnd(200),
     sellerFeeBasisPoints: 0,
     creators: creatorAddress ? [{
       address: new PublicKey(creatorAddress),
-      verified: false,
+      verified: 0,
       share: 100,
     }] : null,
     collection: null,
     uses: null,
   };
 
-  const buffer = Buffer.alloc(1);
-  buffer.writeUInt8(33, 0);
+  const buffer = Buffer.alloc(1 + 32 + 10 + 200 + 2 + (creatorAddress ? 34 : 0));
+  let offset = 0;
 
-  const metadataBuffer = Buffer.from(JSON.stringify(metadataData), 'utf8');
-  const completeBuffer = Buffer.concat([buffer, metadataBuffer]);
+  buffer.writeUInt8(0, offset); // Create Metadata instruction
+  offset += 1;
 
-  const keys = [
-    {
-      pubkey: metadata,
-      isSigner: false,
-      isWritable: true,
-    },
-    {
-      pubkey: mint,
-      isSigner: false,
-      isWritable: false,
-    },
-    {
-      pubkey: mintAuthority,
-      isSigner: true,
-      isWritable: false,
-    },
-    {
-      pubkey: payer,
-      isSigner: true,
-      isWritable: true,
-    },
-    {
-      pubkey: updateAuthority,
-      isSigner: false,
-      isWritable: false,
-    },
-    {
-      pubkey: SystemProgram.programId,
-      isSigner: false,
-      isWritable: false,
-    },
-    {
-      pubkey: TOKEN_PROGRAM_ID,
-      isSigner: false,
-      isWritable: false,
-    },
-  ];
+  buffer.write(metadataData.name, offset, 'utf8');
+  offset += 32;
+  buffer.write(metadataData.symbol, offset, 'utf8');
+  offset += 10;
+  buffer.write(metadataData.uri, offset, 'utf8');
+  offset += 200;
 
-  return new Transaction().add({
-    keys,
+  buffer.writeUInt16LE(metadataData.sellerFeeBasisPoints, offset);
+  offset += 2;
+
+  if (creatorAddress) {
+    const creatorPubkey = new PublicKey(creatorAddress);
+    creatorPubkey.toBuffer().copy(buffer, offset);
+    offset += 32;
+    buffer.writeUInt8(0, offset); // verified
+    offset += 1;
+    buffer.writeUInt8(100, offset); // share
+  }
+
+  const transaction = new Transaction();
+  
+  // Add compute budget instruction first
+  transaction.add(
+    ComputeBudgetProgram.setComputeUnitLimit({
+      units: 400000
+    })
+  );
+
+  // Add the metadata instruction
+  transaction.add({
+    keys: [
+      {
+        pubkey: metadata,
+        isSigner: false,
+        isWritable: true,
+      },
+      {
+        pubkey: mint,
+        isSigner: false,
+        isWritable: false,
+      },
+      {
+        pubkey: mintAuthority,
+        isSigner: true,
+        isWritable: false,
+      },
+      {
+        pubkey: payer,
+        isSigner: true,
+        isWritable: true,
+      },
+      {
+        pubkey: updateAuthority,
+        isSigner: true,
+        isWritable: false,
+      },
+      {
+        pubkey: SystemProgram.programId,
+        isSigner: false,
+        isWritable: false,
+      }
+    ],
     programId: TOKEN_METADATA_PROGRAM_ID,
-    data: completeBuffer,
+    data: buffer,
   });
+
+  return transaction;
 };
 
 export async function createToken(data: {
