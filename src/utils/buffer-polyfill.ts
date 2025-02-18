@@ -1,5 +1,16 @@
 
 import { Buffer } from 'buffer';
 
-// Make Buffer available globally
+declare global {
+  interface Window {
+    process: {
+      env: { [key: string]: string | undefined };
+    };
+  }
+}
+
+window.process = window.process || {
+  env: { NODE_DEBUG: '' }
+};
+
 window.Buffer = Buffer;
