@@ -14,9 +14,11 @@ declare global {
   }
 }
 
-window.process = {
+const browserProcess = {
   env: { NODE_DEBUG: '' }
 };
+
+window.process = browserProcess;
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
