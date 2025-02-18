@@ -149,7 +149,7 @@ export async function createToken(data: {
       name: data.name,
       symbol: data.symbol,
       sellerFeeBasisPoints: 0,
-      useNewMint: mint,
+      useNewMint: mintKeypair,
       creators: data.creatorName ? [{
         address: new PublicKey(data.walletAddress),
         share: 100,
