@@ -1,7 +1,7 @@
-
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Metaplex } from '@metaplex-foundation/js';
+import { TokenStandard } from '@metaplex-foundation/mpl-token-metadata';
 
 // Your fee collector wallet address
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
@@ -189,14 +189,14 @@ export async function createToken(data: {
 
     console.log("Step 6: Creating token metadata...");
     try {
-      // Create metadata using Metaplex
+      // Create metadata using Metaplex with correct TokenStandard type
       const { nft } = await metaplex.nfts().create({
         uri: '', // We're not using URI for now
         name: data.name,
         symbol: data.symbol,
         sellerFeeBasisPoints: 0,
         mintAddress: mint,
-        tokenStandard: 'Fungible',
+        tokenStandard: TokenStandard.Fungible,
       });
       console.log("Created token metadata:", nft);
     } catch (error) {
