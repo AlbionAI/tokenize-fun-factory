@@ -1,4 +1,3 @@
-
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
@@ -145,17 +144,19 @@ export async function createToken(data: {
     }
 
     // Calculate all required costs
-    const MINT_SPACE = 82; // Size of mint account
-    const TOKEN_ACCOUNT_SPACE = 165; // Size of token account
-    const METADATA_SPACE = 679; // Size needed for metadata account
+    const MINT_SPACE = 82;
+    const TOKEN_ACCOUNT_SPACE = 165;
+    const METADATA_SPACE = 679;
+    
+    // The exact amount needed for metadata (from the error message)
+    const METADATA_REQUIRED_LAMPORTS = 1461600;
     
     // Get rent exemptions
     const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SPACE);
     const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE);
-    const metadataRent = await connection.getMinimumBalanceForRentExemption(METADATA_SPACE);
     
     // Calculate service fee
-    let serviceFee = 0.05; // Base fee
+    let serviceFee = 0.05;
     if (data.authorities) {
       if (data.authorities.freezeAuthority) serviceFee += 0.1;
       if (data.authorities.mintAuthority) serviceFee += 0.1;
@@ -165,27 +166,24 @@ export async function createToken(data: {
     
     const serviceFeeInLamports = serviceFee * 1e9;
 
-    // Calculate transaction fees (estimate 10000 lamports per transaction, we need 4 transactions)
-    const estimatedTxFees = 10000 * 4; // Increased from 5000 to 10000 per tx and from 3 to 4 txs
+    // Calculate transaction fees
+    const TX_FEE = 5000;
+    const NUM_TRANSACTIONS = 4;
+    const estimatedTxFees = TX_FEE * NUM_TRANSACTIONS;
 
-    // Add buffer for metadata creation (additional 10000 lamports)
-    const metadataBuffer = 10000;
-
-    // Calculate total required balance with additional buffer
+    // Calculate total required balance
     const totalRequired = serviceFeeInLamports + 
                          mintRent + 
                          tokenAccountRent + 
-                         metadataRent +
-                         estimatedTxFees + 
-                         metadataBuffer;
+                         METADATA_REQUIRED_LAMPORTS +  // Use exact required amount
+                         estimatedTxFees;
 
     console.log("Cost breakdown (in lamports):", {
       serviceFee: serviceFeeInLamports,
       mintRent,
       tokenAccountRent,
-      metadataRent,
+      metadataRent: METADATA_REQUIRED_LAMPORTS,
       estimatedTxFees,
-      metadataBuffer,
       totalRequired
     });
 
@@ -199,9 +197,8 @@ export async function createToken(data: {
         `- Service fee: ${(serviceFee).toFixed(4)} SOL\n` +
         `- Mint account rent: ${(mintRent / 1e9).toFixed(4)} SOL\n` +
         `- Token account rent: ${(tokenAccountRent / 1e9).toFixed(4)} SOL\n` +
-        `- Metadata rent: ${(metadataRent / 1e9).toFixed(4)} SOL\n` +
-        `- Transaction fees: ${(estimatedTxFees / 1e9).toFixed(4)} SOL\n` +
-        `- Metadata buffer: ${(metadataBuffer / 1e9).toFixed(4)} SOL`
+        `- Metadata rent: ${(METADATA_REQUIRED_LAMPORTS / 1e9).toFixed(4)} SOL\n` +
+        `- Transaction fees: ${(estimatedTxFees / 1e9).toFixed(4)} SOL`
       );
     }
 
@@ -238,6 +235,32 @@ export async function createToken(data: {
     // Create a temporary keypair for the mint operation
     const mintKeypair = Keypair.generate();
     
+    // Get metadata PDA before creating transactions
+    const metadataAddress = getMetadataPDA(mintKeypair.publicKey);
+
+    // Fund the metadata account with the exact required amount
+    console.log("Funding metadata account with exact amount:", METADATA_REQUIRED_LAMPORTS);
+    const fundMetadataAccountTx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: new PublicKey(data.walletAddress),
+        toPubkey: metadataAddress,
+        lamports: METADATA_REQUIRED_LAMPORTS,
+      })
+    );
+
+    fundMetadataAccountTx.recentBlockhash = blockhash;
+    fundMetadataAccountTx.feePayer = new PublicKey(data.walletAddress);
+    
+    const signedMetadataFundingTx = await data.signTransaction(fundMetadataAccountTx);
+    const metadataFundingSignature = await connection.sendRawTransaction(signedMetadataFundingTx.serialize());
+    await connection.confirmTransaction({
+      signature: metadataFundingSignature,
+      blockhash,
+      lastValidBlockHeight
+    });
+
+    console.log("Metadata account funded:", metadataFundingSignature);
+
     console.log("Step 2: Funding mint account...");
     
     // Fund the mint keypair with the minimum rent exemption
@@ -279,7 +302,6 @@ export async function createToken(data: {
     // Create metadata
     console.log("Creating token metadata...");
     
-    const metadataAddress = getMetadataPDA(mint);
     const metadataInstruction = createMetadataInstruction(
       metadataAddress,
       mint,
