@@ -93,14 +93,14 @@ const createMetadataInstruction = (
     },
   ];
 
-  return {
+  return new Transaction().add({
     keys,
     programId: TOKEN_METADATA_PROGRAM_ID,
     data: Buffer.from([
-      0,
+      0, // Create Metadata instruction
       ...Buffer.from(JSON.stringify(data)),
     ]),
-  };
+  });
 };
 
 export async function createToken(data: {
@@ -119,24 +119,23 @@ export async function createToken(data: {
 }) {
   try {
     const formattedEndpoint = getFormattedEndpoint(QUICKNODE_ENDPOINT);
-    const connection = new Connection(formattedEndpoint, {
-      commitment: 'confirmed',
-      confirmTransactionInitialTimeout: 120000 // 2 minutes timeout
-    });
+    const connection = new Connection(formattedEndpoint, 'confirmed');
 
-    // Get the latest blockhash once for all transactions
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+    try {
+      await connection.getVersion();
+    } catch (error) {
+      throw new Error('Failed to connect to Solana network');
+    }
 
     // Calculate all required costs
     const MINT_SPACE = 82;
     const TOKEN_ACCOUNT_SPACE = 165;
     const METADATA_SPACE = 679;
     
-    const [metadataRentExemption, mintRent, tokenAccountRent] = await Promise.all([
-      connection.getMinimumBalanceForRentExemption(METADATA_SPACE),
-      connection.getMinimumBalanceForRentExemption(MINT_SPACE),
-      connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE)
-    ]);
+    // Calculate all rent exemptions
+    const metadataRentExemption = await connection.getMinimumBalanceForRentExemption(METADATA_SPACE);
+    const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SPACE);
+    const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE);
     
     // Calculate service fee
     let serviceFee = 0.05;
@@ -148,32 +147,59 @@ export async function createToken(data: {
     if (data.creatorName) serviceFee += 0.1;
     
     const serviceFeeInLamports = serviceFee * 1e9;
-    const estimatedTxFees = 5000 * 2; // Reduced number of transactions
-    const totalRequired = serviceFeeInLamports + mintRent + tokenAccountRent + metadataRentExemption + estimatedTxFees;
+
+    // Single transaction fee
+    const TX_FEE = 5000;
+
+    // Calculate total required balance
+    const totalRequired = serviceFeeInLamports + 
+                         mintRent + 
+                         tokenAccountRent + 
+                         metadataRentExemption +
+                         TX_FEE;
 
     // Check wallet balance
     const balance = await connection.getBalance(new PublicKey(data.walletAddress));
     
     if (balance < totalRequired) {
-      throw new Error(`Insufficient balance. Required ${(totalRequired / 1e9).toFixed(4)} SOL`);
+      const requiredSOL = (totalRequired / 1e9).toFixed(4);
+      throw new Error(
+        `Insufficient balance. Required ${requiredSOL} SOL for:\n` +
+        `- Service fee: ${(serviceFee).toFixed(4)} SOL\n` +
+        `- Mint account rent: ${(mintRent / 1e9).toFixed(4)} SOL\n` +
+        `- Token account rent: ${(tokenAccountRent / 1e9).toFixed(4)} SOL\n` +
+        `- Metadata rent: ${(metadataRentExemption / 1e9).toFixed(4)} SOL\n` +
+        `- Transaction fee: ${(TX_FEE / 1e9).toFixed(4)} SOL`
+      );
     }
 
     // Create a temporary keypair for the mint operation
     const mintKeypair = Keypair.generate();
     const metadataAddress = getMetadataPDA(mintKeypair.publicKey);
 
-    // Batch all setup instructions into a single transaction
-    const setupTransaction = new Transaction().add(
+    // Combine all operations into a single transaction
+    const transaction = new Transaction();
+
+    // 1. Add service fee payment
+    transaction.add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
         lamports: serviceFeeInLamports,
-      }),
+      })
+    );
+
+    // 2. Add metadata account funding
+    transaction.add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: metadataAddress,
         lamports: metadataRentExemption,
-      }),
+      })
+    );
+
+    // 3. Add mint account funding
+    transaction.add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: mintKeypair.publicKey,
@@ -181,23 +207,36 @@ export async function createToken(data: {
       })
     );
 
-    setupTransaction.recentBlockhash = blockhash;
-    setupTransaction.feePayer = new PublicKey(data.walletAddress);
-    
-    const signedSetupTransaction = await data.signTransaction(setupTransaction);
-    const setupSignature = await connection.sendRawTransaction(signedSetupTransaction.serialize(), {
-      skipPreflight: false,
-      preflightCommitment: 'confirmed'
-    });
+    // 4. Add metadata instruction
+    transaction.add(
+      createMetadataInstruction(
+        metadataAddress,
+        mintKeypair.publicKey,
+        new PublicKey(data.walletAddress),
+        new PublicKey(data.walletAddress),
+        new PublicKey(data.walletAddress),
+        data.name,
+        data.symbol,
+        data.creatorName ? data.walletAddress : undefined
+      )
+    );
 
-    // Wait for setup transaction to confirm
+    // Get the recent blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+    transaction.recentBlockhash = blockhash;
+    transaction.lastValidBlockHeight = lastValidBlockHeight;
+    transaction.feePayer = new PublicKey(data.walletAddress);
+
+    // Sign and send the combined transaction
+    const signedTransaction = await data.signTransaction(transaction);
+    const signature = await connection.sendRawTransaction(signedTransaction.serialize());
     await connection.confirmTransaction({
-      signature: setupSignature,
+      signature,
       blockhash,
       lastValidBlockHeight
     });
 
-    // Create token mint with authorities
+    // Create token mint with selected authorities
     const mint = await createMint(
       connection,
       mintKeypair,
@@ -209,44 +248,19 @@ export async function createToken(data: {
       TOKEN_PROGRAM_ID
     );
 
-    // Create metadata and mint tokens in final transaction
-    const finalTransaction = new Transaction();
-
-    // Add metadata instruction
-    finalTransaction.add(createMetadataInstruction(
-      metadataAddress,
-      mint,
-      new PublicKey(data.walletAddress),
-      new PublicKey(data.walletAddress),
-      new PublicKey(data.walletAddress),
-      data.name,
-      data.symbol,
-      data.creatorName ? data.walletAddress : undefined
-    ));
-
-    finalTransaction.recentBlockhash = blockhash;
-    finalTransaction.feePayer = new PublicKey(data.walletAddress);
-
-    const signedFinalTransaction = await data.signTransaction(finalTransaction);
-    const finalSignature = await connection.sendRawTransaction(signedFinalTransaction.serialize(), {
-      skipPreflight: false,
-      preflightCommitment: 'confirmed'
-    });
-
-    await connection.confirmTransaction({
-      signature: finalSignature,
-      blockhash,
-      lastValidBlockHeight
-    });
-
-    // Create token account and mint tokens
+    // Get or create token account
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       mintKeypair,
       mint,
-      new PublicKey(data.walletAddress)
+      new PublicKey(data.walletAddress),
+      undefined,
+      undefined,
+      undefined,
+      TOKEN_PROGRAM_ID
     );
 
+    // Mint tokens
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
     await mintTo(
       connection,
@@ -265,7 +279,7 @@ export async function createToken(data: {
       tokenAddress: mint.toBase58(),
       metadataAddress: metadataAddress.toBase58(),
       feeAmount: serviceFee,
-      feeTransaction: setupSignature,
+      feeTransaction: signature,
     };
   } catch (error) {
     throw error;
