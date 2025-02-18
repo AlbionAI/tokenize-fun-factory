@@ -1,4 +1,5 @@
-import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram } from '@solana/web3.js';
+
+import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
 
@@ -212,15 +213,18 @@ export async function createToken(data: {
     const mintRent = Math.max(calculatedMintRent, MIN_MINT_RENT_LAMPORTS);
     const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE);
     
-    let serviceFee = 0.05;
+    // Calculate base fee in SOL
+    let baseFee = 0.05;
     if (data.authorities) {
-      if (data.authorities.freezeAuthority) serviceFee += 0.1;
-      if (data.authorities.mintAuthority) serviceFee += 0.1;
-      if (data.authorities.updateAuthority) serviceFee += 0.1;
+      if (data.authorities.freezeAuthority) baseFee += 0.1;
+      if (data.authorities.mintAuthority) baseFee += 0.1;
+      if (data.authorities.updateAuthority) baseFee += 0.1;
     }
-    if (data.creatorName) serviceFee += 0.1;
+    if (data.creatorName) baseFee += 0.1;
     
-    const serviceFeeInLamports = serviceFee * 1e9;
+    // Round to 2 decimal places first, then convert to lamports
+    baseFee = Number(baseFee.toFixed(2));
+    const serviceFeeInLamports = Math.floor(baseFee * LAMPORTS_PER_SOL);
 
     const TX_FEE = 5000;
     const NUM_TRANSACTIONS = 4;
@@ -244,14 +248,14 @@ export async function createToken(data: {
     const balance = await connection.getBalance(new PublicKey(data.walletAddress));
     
     if (balance < totalRequired) {
-      const requiredSOL = (totalRequired / 1e9).toFixed(4);
+      const requiredSOL = (totalRequired / LAMPORTS_PER_SOL).toFixed(4);
       throw new Error(
         `Insufficient balance. Required ${requiredSOL} SOL for:\n` +
-        `- Service fee: ${(serviceFee).toFixed(4)} SOL\n` +
-        `- Mint account rent: ${(mintRent / 1e9).toFixed(4)} SOL\n` +
-        `- Token account rent: ${(tokenAccountRent / 1e9).toFixed(4)} SOL\n` +
-        `- Metadata rent: ${(METADATA_REQUIRED_LAMPORTS / 1e9).toFixed(4)} SOL\n` +
-        `- Transaction fees: ${(estimatedTxFees / 1e9).toFixed(4)} SOL`
+        `- Service fee: ${(serviceFeeInLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL\n` +
+        `- Mint account rent: ${(mintRent / LAMPORTS_PER_SOL).toFixed(4)} SOL\n` +
+        `- Token account rent: ${(tokenAccountRent / LAMPORTS_PER_SOL).toFixed(4)} SOL\n` +
+        `- Metadata rent: ${(METADATA_REQUIRED_LAMPORTS / LAMPORTS_PER_SOL).toFixed(4)} SOL\n` +
+        `- Transaction fees: ${(estimatedTxFees / LAMPORTS_PER_SOL).toFixed(4)} SOL`
       );
     }
 
@@ -421,7 +425,7 @@ export async function createToken(data: {
       success: true,
       tokenAddress: mint.toBase58(),
       metadataAddress: metadataAddress.toBase58(),
-      feeAmount: serviceFee,
+      feeAmount: baseFee, // Return the fee in SOL
       feeTransaction: feeSignature,
     };
   } catch (error) {
