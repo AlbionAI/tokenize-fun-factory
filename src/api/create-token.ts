@@ -1,4 +1,3 @@
-
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createInitializeMintInstruction, getMinimumBalanceForRentExemptMint, getMint, TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, createMintToInstruction } from '@solana/spl-token';
 import { Buffer } from 'buffer';
@@ -39,62 +38,44 @@ const createMetadataInstruction = (
   symbol: string,
   creatorAddress?: string
 ) => {
-  const uri = JSON.stringify({
-    name,
-    symbol,
-    description: `${name} token`,
-    image: '',
-    attributes: [],
-    properties: {
-      files: [],
-      creators: creatorAddress ? [{
-        address: creatorAddress,
-        verified: true,
-        share: 100
-      }] : []
-    }
-  });
+  const uri = '';
+  const sellerFeeBasisPoints = 0;
 
-  const nameBuffer = Buffer.from(name);
-  const symbolBuffer = Buffer.from(symbol);
-  const uriBuffer = Buffer.from(uri);
-  
-  const bufferSize = 1 +
-    32 +
-    10 +
-    200 +
-    2 +
-    1 +
-    (creatorAddress ? 34 : 0);
-
-  const buffer = Buffer.alloc(bufferSize);
+  const buffer = Buffer.alloc(1 + 32 + 32 + 32 + 2 + name.length + 2 + symbol.length + 2 + uri.length + 2 + 1 + 1 + 1);
   let offset = 0;
 
-  buffer.writeUInt8(33, offset);
+  buffer.writeUInt8(1, offset);
   offset += 1;
 
-  nameBuffer.copy(buffer, offset, 0, Math.min(nameBuffer.length, 32));
-  offset += 32;
+  buffer.writeUInt16LE(name.length, offset);
+  offset += 2;
+  buffer.write(name, offset);
+  offset += name.length;
 
-  symbolBuffer.copy(buffer, offset, 0, Math.min(symbolBuffer.length, 10));
-  offset += 10;
+  buffer.writeUInt16LE(symbol.length, offset);
+  offset += 2;
+  buffer.write(symbol, offset);
+  offset += symbol.length;
 
-  uriBuffer.copy(buffer, offset, 0, Math.min(uriBuffer.length, 200));
-  offset += 200;
+  buffer.writeUInt16LE(uri.length, offset);
+  offset += 2;
+  buffer.write(uri, offset);
+  offset += uri.length;
 
-  buffer.writeUInt16LE(0, offset);
+  buffer.writeUInt16LE(sellerFeeBasisPoints, offset);
   offset += 2;
 
-  buffer.writeUInt8(creatorAddress ? 1 : 0, offset);
+  const hasCreator = creatorAddress ? 1 : 0;
+  buffer.writeUInt8(hasCreator, offset);
   offset += 1;
 
   if (creatorAddress) {
-    const creatorPubkey = new PublicKey(creatorAddress);
-    creatorPubkey.toBuffer().copy(buffer, offset);
+    const creator = new PublicKey(creatorAddress);
+    creator.toBuffer().copy(buffer, offset);
     offset += 32;
-    buffer.writeUInt8(1, offset);
+    buffer.writeUInt8(1, offset); // verified
     offset += 1;
-    buffer.writeUInt8(100, offset);
+    buffer.writeUInt8(100, offset); // share percentage
   }
 
   return {
@@ -171,14 +152,12 @@ export async function createToken(data: {
       userPubkey
     );
 
-    // Calculate all required space and rent
     const MINT_SPACE = 82;
     const METADATA_SPACE = 679;
     const METADATA_REQUIRED_LAMPORTS = await connection.getMinimumBalanceForRentExemption(METADATA_SPACE);
     const mintRent = await getMinimumBalanceForRentExemptMint(connection);
     const ataRent = await connection.getMinimumBalanceForRentExemption(165);
 
-    // Calculate service fee
     let baseFee = 0.05;
     if (data.authorities) {
       if (data.authorities.freezeAuthority) baseFee += 0.1;
@@ -190,7 +169,6 @@ export async function createToken(data: {
     baseFee = Number(baseFee.toFixed(2));
     const serviceFeeInLamports = Math.floor(baseFee * LAMPORTS_PER_SOL);
 
-    // Calculate total required SOL
     const TX_FEE = 5000;
     const totalRequired = serviceFeeInLamports + 
                          mintRent + 
@@ -220,17 +198,14 @@ export async function createToken(data: {
       );
     }
 
-    // Create single transaction with all instructions
     const transaction = new Transaction();
 
-    // Add compute budget instruction
     transaction.add(
       ComputeBudgetProgram.setComputeUnitLimit({
         units: 400000
       })
     );
 
-    // 1. Add service fee payment instruction
     transaction.add(
       SystemProgram.transfer({
         fromPubkey: userPubkey,
@@ -239,7 +214,6 @@ export async function createToken(data: {
       })
     );
 
-    // 2. Add create mint account instruction
     transaction.add(
       SystemProgram.createAccount({
         fromPubkey: userPubkey,
@@ -250,7 +224,6 @@ export async function createToken(data: {
       })
     );
 
-    // 3. Add initialize mint instruction
     transaction.add(
       createInitializeMintInstruction(
         mintKeypair.publicKey,
@@ -261,7 +234,6 @@ export async function createToken(data: {
       )
     );
 
-    // 4. Add metadata creation instruction
     transaction.add(
       createMetadataInstruction(
         metadataAddress,
@@ -275,7 +247,6 @@ export async function createToken(data: {
       )
     );
 
-    // 5. Add create ATA instruction
     transaction.add(
       createAssociatedTokenAccountInstruction(
         userPubkey,
@@ -285,7 +256,6 @@ export async function createToken(data: {
       )
     );
 
-    // 6. Add mint to instruction
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
     transaction.add(
       createMintToInstruction(
@@ -298,19 +268,15 @@ export async function createToken(data: {
       )
     );
 
-    // Get recent blockhash and add to transaction
     const latestBlockhash = await connection.getLatestBlockhash('finalized');
     transaction.recentBlockhash = latestBlockhash.blockhash;
     transaction.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
     transaction.feePayer = userPubkey;
 
-    // Sign with mint keypair
     transaction.partialSign(mintKeypair);
 
-    // Get user signature
     const signedTransaction = await data.signTransaction(transaction);
     
-    // Send and confirm transaction
     const signature = await connection.sendRawTransaction(signedTransaction.serialize());
     const confirmation = await connection.confirmTransaction({
       signature,
