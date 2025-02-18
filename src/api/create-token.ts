@@ -54,8 +54,8 @@ const createMetadataInstruction = (
     uri: ''.padEnd(200),
     sellerFeeBasisPoints: 0,
     creators: creatorAddress ? [{
-      address: creatorAddress,
-      verified: 0, // Changed from boolean to number
+      address: new PublicKey(creatorAddress),
+      verified: 0,
       share: 100,
     }] : null,
     collection: null,
@@ -84,7 +84,9 @@ const createMetadataInstruction = (
 
   // Write creators if present
   if (creatorAddress) {
-    buffer.write(creatorAddress, offset, 32, 'utf8');
+    // Use toBuffer() to write the PublicKey bytes directly
+    const creatorPubkey = new PublicKey(creatorAddress);
+    creatorPubkey.toBuffer().copy(buffer, offset);
     offset += 32;
     buffer.writeUInt8(0, offset); // verified
     offset += 1;
@@ -104,7 +106,7 @@ const createMetadataInstruction = (
     },
     {
       pubkey: mintAuthority,
-      isSigner: true, // Changed to true as mint authority must sign
+      isSigner: true,
       isWritable: false,
     },
     {
@@ -114,7 +116,7 @@ const createMetadataInstruction = (
     },
     {
       pubkey: updateAuthority,
-      isSigner: true, // Changed to true as update authority must sign for creation
+      isSigner: true,
       isWritable: false,
     },
     {
