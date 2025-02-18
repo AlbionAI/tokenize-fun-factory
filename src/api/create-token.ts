@@ -1,11 +1,8 @@
-
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { createUmi } from "@metaplex-foundation/umi";
 import { mplTokenMetadata, createMetadataAccountV3 } from "@metaplex-foundation/mpl-token-metadata";
-import { publicKey } from '@metaplex-foundation/umi';
-import { createSignerFromKeypair } from "@metaplex-foundation/umi";
-import { keypairIdentity } from '@metaplex-foundation/umi-bundle-defaults';
+import { publicKey, signerIdentity } from '@metaplex-foundation/umi';
 
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
 const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
@@ -31,8 +28,7 @@ const confirmTransaction = async (connection: Connection, signature: string) => 
 
 // Setup Umi instance
 const createUmiInstance = () => {
-  const endpoint = getFormattedEndpoint(QUICKNODE_ENDPOINT);
-  const umi = createUmi(endpoint);
+  const umi = createUmi();
   umi.use(mplTokenMetadata());
   return umi;
 };
@@ -175,11 +171,16 @@ export async function createToken(data: {
     const mintPublicKey = publicKey(mint.toBase58());
     
     // Create a signer from the mint keypair
-    const signerKeypair = createSignerFromKeypair(umi, {
-      secretKey: mintKeypair.secretKey,
-      publicKey: mintKeypair.publicKey.toBytes(),
-    });
-    umi.use(keypairIdentity(signerKeypair));
+    const signer = {
+      publicKey: publicKey(mintKeypair.publicKey.toBase58()),
+      signMessage: async (message: Uint8Array) => mintKeypair.sign(message).signature,
+      signTransaction: async (transaction: Transaction) => {
+        transaction.sign(mintKeypair);
+        return transaction;
+      },
+    };
+    
+    umi.use(signerIdentity(signer));
 
     // Prepare metadata
     const metadataUri = data.logo 
@@ -188,8 +189,8 @@ export async function createToken(data: {
 
     const metadataTx = createMetadataAccountV3(umi, {
       mint: mintPublicKey,
-      mintAuthority: signerKeypair,
-      updateAuthority: signerKeypair.publicKey,
+      mintAuthority: signer,
+      updateAuthority: publicKey(mintKeypair.publicKey.toBase58()),
       data: {
         name: data.name,
         symbol: data.symbol,
@@ -203,7 +204,7 @@ export async function createToken(data: {
       collectionDetails: null,
     });
 
-    await metadataTx.sendAndConfirm();
+    await metadataTx.sendAndConfirm(umi);
     console.log('Metadata created successfully');
 
     return {
