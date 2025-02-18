@@ -1,9 +1,11 @@
+
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { 
   CreateMetadataAccountV3InstructionData,
   Creator,
 } from '@metaplex-foundation/mpl-token-metadata';
+import * as borsh from '@project-serum/borsh';
 import { Buffer } from 'buffer';
 
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
@@ -66,7 +68,7 @@ const createMetadataInstruction = (
   let creators: Creator[] | null = null;
   if (creatorAddress) {
     creators = [{
-      address: new PublicKey(creatorAddress),
+      address: creatorAddress, // Keep as string for Metaplex compatibility
       verified: false,
       share: 100
     }];
@@ -82,14 +84,34 @@ const createMetadataInstruction = (
     uses: null
   };
 
-  const data = Buffer.from(borsh.serialize(
-    CreateMetadataAccountV3InstructionData,
-    {
-      data: metadataData,
+  const dataLayout = borsh.struct([
+    borsh.str('name'),
+    borsh.str('symbol'),
+    borsh.str('uri'),
+    borsh.u16('sellerFeeBasisPoints'),
+    borsh.option(
+      borsh.vec(
+        borsh.struct([
+          borsh.str('address'),
+          borsh.bool('verified'),
+          borsh.u8('share'),
+        ])
+      )
+    )('creators'),
+    borsh.option(borsh.bool())('collection'),
+    borsh.option(borsh.bool())('uses'),
+    borsh.bool('isMutable'),
+    borsh.option(borsh.bool())('collectionDetails'),
+  ]);
+
+  const data = Buffer.from([
+    ...Buffer.from([0]), // Discriminator
+    ...dataLayout.serialize({
+      ...metadataData,
       isMutable: true,
-      collectionDetails: null
-    }
-  ));
+      collectionDetails: null,
+    }),
+  ]);
 
   const createMetadataInstruction = new Transaction().add({
     keys: [
