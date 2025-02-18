@@ -1,3 +1,4 @@
+
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { 
@@ -67,7 +68,7 @@ const createMetadataInstruction = (
   let creators: Creator[] | null = null;
   if (creatorAddress) {
     creators = [{
-      address: creatorAddress,
+      address: new PublicKey(creatorAddress), // Convert string to PublicKey for Creator type
       verified: false,
       share: 100
     }];
@@ -99,7 +100,7 @@ const createMetadataInstruction = (
       uri: '',
       sellerFeeBasisPoints: 0,
       creators: creators ? creators.map(c => ({
-        address: c.address,
+        address: c.address.toBase58(), // Convert PublicKey to string for serialization
         verified: c.verified,
         share: c.share
       })) : null,
