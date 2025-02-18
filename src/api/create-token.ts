@@ -68,7 +68,7 @@ const createMetadataInstruction = (
   let creators: Creator[] | null = null;
   if (creatorAddress) {
     creators = [{
-      address: creatorAddress, // Keep as string for Metaplex compatibility
+      address: new PublicKey(creatorAddress),
       verified: false,
       share: 100
     }];
@@ -84,33 +84,41 @@ const createMetadataInstruction = (
     uses: null
   };
 
+  const creatorsLayout = borsh.struct([
+    borsh.publicKey('address'),
+    borsh.bool('verified'),
+    borsh.u8('share'),
+  ]);
+
   const dataLayout = borsh.struct([
     borsh.str('name'),
     borsh.str('symbol'),
     borsh.str('uri'),
     borsh.u16('sellerFeeBasisPoints'),
-    borsh.option(
-      borsh.vec(
-        borsh.struct([
-          borsh.str('address'),
-          borsh.bool('verified'),
-          borsh.u8('share'),
-        ])
-      )
-    )('creators'),
-    borsh.option(borsh.bool())('collection'),
-    borsh.option(borsh.bool())('uses'),
+    borsh.option(borsh.vec(creatorsLayout)),
+    borsh.option(borsh.publicKey('collection')),
+    borsh.option(borsh.publicKey('uses')),
     borsh.bool('isMutable'),
-    borsh.option(borsh.bool())('collectionDetails'),
+    borsh.option(borsh.publicKey('collectionDetails')),
   ]);
 
   const data = Buffer.from([
     ...Buffer.from([0]), // Discriminator
     ...dataLayout.serialize({
-      ...metadataData,
+      name,
+      symbol,
+      uri: '',
+      sellerFeeBasisPoints: 0,
+      creators: creators ? creators.map(c => ({
+        address: c.address,
+        verified: c.verified,
+        share: c.share
+      })) : null,
+      collection: null,
+      uses: null,
       isMutable: true,
-      collectionDetails: null,
-    }),
+      collectionDetails: null
+    })
   ]);
 
   const createMetadataInstruction = new Transaction().add({
