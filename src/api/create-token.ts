@@ -1,7 +1,7 @@
 
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { Metaplex } from '@metaplex-foundation/js';
+import { Metaplex, walletAdapterIdentity } from '@metaplex-foundation/js';
 
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
 const QUICKNODE_ENDPOINT = import.meta.env.VITE_QUICKNODE_ENDPOINT;
@@ -47,8 +47,16 @@ export async function createToken(data: {
       throw new Error('Failed to connect to Solana network');
     }
 
-    // Initialize Metaplex
-    const metaplex = new Metaplex(connection);
+    // Initialize Metaplex with wallet adapter
+    const metaplex = Metaplex.make(connection).use(
+      walletAdapterIdentity({
+        publicKey: new PublicKey(data.walletAddress),
+        signTransaction: data.signTransaction,
+        signAllTransactions: async (txs) => {
+          return Promise.all(txs.map(tx => data.signTransaction(tx)));
+        },
+      })
+    );
     
     // Calculate base fee in SOL
     let baseFee = 0.05;
@@ -66,8 +74,8 @@ export async function createToken(data: {
     const balance = await connection.getBalance(new PublicKey(data.walletAddress));
     
     // Estimate total cost including Metaplex operations
-    const ESTIMATED_MINT_COST = 0.01 * LAMPORTS_PER_SOL; // 0.01 SOL for mint
-    const ESTIMATED_METADATA_COST = 0.01 * LAMPORTS_PER_SOL; // 0.01 SOL for metadata
+    const ESTIMATED_MINT_COST = 0.01 * LAMPORTS_PER_SOL;
+    const ESTIMATED_METADATA_COST = 0.01 * LAMPORTS_PER_SOL;
     const TX_FEE = 5000;
     const NUM_TRANSACTIONS = 3;
     const estimatedTxFees = TX_FEE * NUM_TRANSACTIONS;
@@ -137,18 +145,15 @@ export async function createToken(data: {
 
     // Create metadata using Metaplex
     await metaplex.nfts().create({
-      uri: '',
+      uri: 'https://arweave.net/',
       name: data.name,
       symbol: data.symbol,
       sellerFeeBasisPoints: 0,
-      useNewMint: mint,
-      tokenStandard: 'Fungible',
-      updateAuthority: new PublicKey(data.walletAddress),
-      mintAuthority: new PublicKey(data.walletAddress),
+      tokenStandard: "fungible",
+      mint: mintKeypair,
       creators: data.creatorName ? [{
         address: new PublicKey(data.walletAddress),
-        verified: true,
-        share: 100
+        share: 100,
       }] : undefined,
     });
 
