@@ -49,86 +49,37 @@ const createMetadataInstruction = (
   updateAuthority: PublicKey,
   name: string,
   symbol: string,
-  creatorAddress?: string
+  uri: string = ''
 ) => {
-  // Create metadata JSON
-  const uri = JSON.stringify({
+  const metadataData = {
     name,
     symbol,
-    description: `${name} token`,
-    image: '', // Optional: Add image URL if available
-    attributes: [],
-    properties: {
-      files: [],
-      creators: creatorAddress ? [{
-        address: creatorAddress,
-        verified: true,
-        share: 100
-      }] : []
-    }
-  });
+    uri,
+    sellerFeeBasisPoints: 0,
+    creators: null,
+    collection: null,
+    uses: null
+  };
 
-  // Calculate buffer size (fixed size + variable parts)
-  const nameBuffer = Buffer.from(name);
-  const symbolBuffer = Buffer.from(symbol);
-  const uriBuffer = Buffer.from(uri);
-  
-  const bufferSize = 1 + // Instruction discriminator
-    32 + // Name max length
-    10 + // Symbol max length
-    200 + // URI max length
-    2 + // Seller fee basis points (u16)
-    1 + // Creator present bool
-    (creatorAddress ? 34 : 0); // Creator data if present
-
-  const buffer = Buffer.alloc(bufferSize);
+  const buffer = Buffer.alloc(1 + name.length + symbol.length + uri.length + 2);
   let offset = 0;
 
-  // Write instruction discriminator (create metadata instruction)
-  buffer.writeUInt8(33, offset);
+  // Write instruction discriminator for create metadata
+  buffer.writeUInt8(0, offset);
   offset += 1;
 
-  // Write name with length prefix
-  nameBuffer.copy(buffer, offset, 0, Math.min(nameBuffer.length, 32));
-  offset += 32;
+  // Write name
+  buffer.write(name, offset);
+  offset += name.length;
 
-  // Write symbol with length prefix
-  symbolBuffer.copy(buffer, offset, 0, Math.min(symbolBuffer.length, 10));
-  offset += 10;
+  // Write symbol
+  buffer.write(symbol, offset);
+  offset += symbol.length;
 
-  // Write URI with length prefix
-  uriBuffer.copy(buffer, offset, 0, Math.min(uriBuffer.length, 200));
-  offset += 200;
+  // Write uri
+  buffer.write(uri, offset);
 
-  // Write seller fee basis points (0)
-  buffer.writeUInt16LE(0, offset);
-  offset += 2;
-
-  // Write creator presence
-  buffer.writeUInt8(creatorAddress ? 1 : 0, offset);
-  offset += 1;
-
-  // Write creator data if present
-  if (creatorAddress) {
-    const creatorPubkey = new PublicKey(creatorAddress);
-    creatorPubkey.toBuffer().copy(buffer, offset);
-    offset += 32;
-    buffer.writeUInt8(1, offset); // verified = true
-    offset += 1;
-    buffer.writeUInt8(100, offset); // share = 100%
-  }
-
-  const transaction = new Transaction();
-  
-  // Add compute budget instruction
-  transaction.add(
-    ComputeBudgetProgram.setComputeUnitLimit({
-      units: 400000
-    })
-  );
-
-  // Add metadata instruction
-  transaction.add({
+  return new Transaction().add({
     keys: [
       {
         pubkey: metadata,
@@ -167,10 +118,8 @@ const createMetadataInstruction = (
       },
     ],
     programId: TOKEN_METADATA_PROGRAM_ID,
-    data: buffer,
+    data: buffer
   });
-
-  return transaction;
 };
 
 export async function createToken(data: {
@@ -188,155 +137,80 @@ export async function createToken(data: {
   creatorName?: string;
 }) {
   try {
-    console.log("Starting token creation with data:", {
-      ...data,
-      walletAddress: data.walletAddress.substring(0, 4) + '...'
-    });
-
-    const formattedEndpoint = getFormattedEndpoint(QUICKNODE_ENDPOINT);
-    console.log("Initializing Solana connection with endpoint");
-    const connection = new Connection(formattedEndpoint, 'confirmed');
-
-    try {
-      await connection.getVersion();
-    } catch (error) {
-      console.error("Failed to connect to Solana:", error);
-      throw new Error('Failed to connect to Solana network');
-    }
-
-    // Calculate required space and rent
-    const MINT_SPACE = 82;
-    const TOKEN_ACCOUNT_SPACE = 165;
-    const METADATA_SPACE = 679;
-    
-    const METADATA_REQUIRED_LAMPORTS = 3410880;
-    const MIN_MINT_RENT_LAMPORTS = 2461600;
-    
-    const calculatedMintRent = await connection.getMinimumBalanceForRentExemption(MINT_SPACE);
-    const mintRent = Math.max(calculatedMintRent, MIN_MINT_RENT_LAMPORTS);
-    const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE);
-
-    // Calculate fees
-    let baseFee = 0.05;
-    if (data.authorities) {
-      if (data.authorities.freezeAuthority) baseFee += 0.1;
-      if (data.authorities.mintAuthority) baseFee += 0.1;
-      if (data.authorities.updateAuthority) baseFee += 0.1;
-    }
-    if (data.creatorName) baseFee += 0.1;
-    
-    baseFee = Number(baseFee.toFixed(2));
-    const serviceFeeInLamports = Math.floor(baseFee * LAMPORTS_PER_SOL);
-
-    const TX_FEE = 5000;
-    const NUM_TRANSACTIONS = 4;
-    const estimatedTxFees = TX_FEE * NUM_TRANSACTIONS;
-
-    const totalRequired = serviceFeeInLamports + 
-                         mintRent + 
-                         tokenAccountRent + 
-                         METADATA_REQUIRED_LAMPORTS +
-                         estimatedTxFees;
-
-    // Check balance
-    const balance = await connection.getBalance(new PublicKey(data.walletAddress));
-    if (balance < totalRequired) {
-      const requiredSOL = (totalRequired / LAMPORTS_PER_SOL).toFixed(4);
-      throw new Error(
-        `Insufficient balance. Required ${requiredSOL} SOL`
-      );
-    }
-
-    // Step 1: Pay service fee
+    const connection = new Connection(getFormattedEndpoint(QUICKNODE_ENDPOINT), 'confirmed');
     const mintKeypair = Keypair.generate();
-    let latestBlockhash = await connection.getLatestBlockhash('finalized');
+    const userPublicKey = new PublicKey(data.walletAddress);
     
-    console.log("Step 1: Paying service fee...");
-    const feeTransaction = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: new PublicKey(data.walletAddress),
-        toPubkey: new PublicKey(FEE_COLLECTOR_WALLET),
-        lamports: serviceFeeInLamports,
-      })
-    );
-
-    feeTransaction.recentBlockhash = latestBlockhash.blockhash;
-    feeTransaction.feePayer = new PublicKey(data.walletAddress);
-
-    const signedFeeTransaction = await data.signTransaction(feeTransaction);
-    const feeSignature = await connection.sendRawTransaction(signedFeeTransaction.serialize());
-    await connection.confirmTransaction({
-      signature: feeSignature,
-      blockhash: latestBlockhash.blockhash,
-      lastValidBlockHeight: latestBlockhash.lastValidBlockHeight
-    });
-
-    // Step 2: Fund and create mint account
-    console.log("Step 2: Funding mint account...");
-    latestBlockhash = await connection.getLatestBlockhash('finalized');
-    
-    const fundMintTransaction = new Transaction().add(
+    // Step 1: Fund mint account and initialize it
+    console.log("Step 1: Creating and funding mint account...");
+    const mintRent = await connection.getMinimumBalanceForRentExemption(82);
+    let transaction = new Transaction().add(
       SystemProgram.createAccount({
-        fromPubkey: new PublicKey(data.walletAddress),
+        fromPubkey: userPublicKey,
         newAccountPubkey: mintKeypair.publicKey,
-        space: MINT_SPACE,
+        space: 82,
         lamports: mintRent,
         programId: TOKEN_PROGRAM_ID
       })
     );
 
-    fundMintTransaction.recentBlockhash = latestBlockhash.blockhash;
-    fundMintTransaction.feePayer = new PublicKey(data.walletAddress);
-    fundMintTransaction.sign(mintKeypair);
+    let latestBlockhash = await connection.getLatestBlockhash('finalized');
+    transaction.recentBlockhash = latestBlockhash.blockhash;
+    transaction.feePayer = userPublicKey;
+    transaction.sign(mintKeypair);
 
-    const signedMintTransaction = await data.signTransaction(fundMintTransaction);
-    const mintSignature = await connection.sendRawTransaction(signedMintTransaction.serialize());
+    let signedTransaction = await data.signTransaction(transaction);
+    let signature = await connection.sendRawTransaction(signedTransaction.serialize());
     await connection.confirmTransaction({
-      signature: mintSignature,
+      signature,
       blockhash: latestBlockhash.blockhash,
       lastValidBlockHeight: latestBlockhash.lastValidBlockHeight
     });
 
     // Initialize mint
+    console.log("Initializing mint...");
     const mint = await createMint(
       connection,
       mintKeypair,
-      new PublicKey(data.walletAddress),
-      data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
+      userPublicKey,
+      data.authorities?.freezeAuthority ? userPublicKey : null,
       data.decimals,
       mintKeypair
     );
 
-    // Step 3: Create metadata account after mint is initialized
+    // Step 2: Create metadata
+    console.log("Step 2: Creating metadata...");
     const metadataAddress = getMetadataPDA(mint);
-    console.log("Step 3: Creating metadata account...");
-    latestBlockhash = await connection.getLatestBlockhash('finalized');
-
-    const metadataTransaction = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: new PublicKey(data.walletAddress),
-        toPubkey: metadataAddress,
-        lamports: METADATA_REQUIRED_LAMPORTS,
-      })
+    
+    const metadataIx = createMetadataInstruction(
+      metadataAddress,
+      mint,
+      userPublicKey,
+      userPublicKey,
+      userPublicKey,
+      data.name,
+      data.symbol
     );
 
-    metadataTransaction.recentBlockhash = latestBlockhash.blockhash;
-    metadataTransaction.feePayer = new PublicKey(data.walletAddress);
+    latestBlockhash = await connection.getLatestBlockhash('finalized');
+    metadataIx.recentBlockhash = latestBlockhash.blockhash;
+    metadataIx.feePayer = userPublicKey;
 
-    const signedMetadataTransaction = await data.signTransaction(metadataTransaction);
-    const metadataSignature = await connection.sendRawTransaction(signedMetadataTransaction.serialize());
+    signedTransaction = await data.signTransaction(metadataIx);
+    signature = await connection.sendRawTransaction(signedTransaction.serialize());
     await connection.confirmTransaction({
-      signature: metadataSignature,
+      signature,
       blockhash: latestBlockhash.blockhash,
       lastValidBlockHeight: latestBlockhash.lastValidBlockHeight
     });
 
-    // Step 4: Create token account and mint tokens
+    // Step 3: Create token account and mint tokens
+    console.log("Step 3: Creating token account and minting tokens...");
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       mintKeypair,
       mint,
-      new PublicKey(data.walletAddress)
+      userPublicKey
     );
 
     const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
@@ -345,21 +219,21 @@ export async function createToken(data: {
       mintKeypair,
       mint,
       tokenAccount.address,
-      new PublicKey(data.walletAddress),
+      userPublicKey,
       supplyNumber
     );
 
     console.log("Token creation completed successfully!");
-
     return {
       success: true,
       tokenAddress: mint.toBase58(),
       metadataAddress: metadataAddress.toBase58(),
-      feeAmount: baseFee,
-      feeTransaction: feeSignature,
+      feeAmount: 0.05, // Simplified fee structure for testing
+      feeTransaction: signature,
     };
+
   } catch (error) {
-    console.error('Error in createToken:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('Error in createToken:', error);
     throw error;
   }
 }
