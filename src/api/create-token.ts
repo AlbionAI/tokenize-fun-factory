@@ -128,53 +128,53 @@ export async function createToken(data: {
 
     console.log("Fee payment confirmed:", feeSignature);
 
-    // Create the mint account
-    const mintKeypair = Keypair.generate();
-    
-    // Create the mint with metadata
-    const { nft } = await metaplex.nfts().create({
-      uri: 'https://arweave.net/',
+    // Create the mint account first
+    console.log("Creating mint account...");
+    const mint = await createMint(
+      connection,
+      Keypair.generate(), // payer
+      new PublicKey(data.walletAddress), // mint authority
+      data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null, // freeze authority
+      data.decimals,
+      undefined,
+      undefined,
+      TOKEN_PROGRAM_ID
+    );
+
+    console.log("Mint account created:", mint.toBase58());
+
+    // Create metadata for the token
+    console.log("Creating token metadata...");
+    const { token } = await metaplex.tokens().createV1({
+      decimals: data.decimals,
+      initialSupply: BigInt(parseInt(data.supply.replace(/,/g, ''))),
+      mint: mint,
       name: data.name,
       symbol: data.symbol,
+      uri: 'https://arweave.net/',
       sellerFeeBasisPoints: 0,
-      updateAuthority: new PublicKey(data.walletAddress),
-      mintAuthority: new PublicKey(data.walletAddress),
-      freezeAuthority: data.authorities?.freezeAuthority ? new PublicKey(data.walletAddress) : null,
-      decimals: data.decimals,
-      useNewMint: mintKeypair,
-      tokenStandard: 1, // Fungible
       creators: data.creatorName ? [{
         address: new PublicKey(data.walletAddress),
         share: 100,
-        verified: false
       }] : undefined,
     });
 
-    console.log("Token and metadata created:", nft.mint.address.toBase58());
+    console.log("Token metadata created");
 
-    // Create token account and mint tokens
+    // Create token account for the user
+    console.log("Creating token account...");
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
-      mintKeypair,
-      nft.mint.address,
+      Keypair.generate(), // payer
+      mint,
       new PublicKey(data.walletAddress)
-    );
-
-    const supplyNumber = parseInt(data.supply.replace(/,/g, ''));
-    await mintTo(
-      connection,
-      mintKeypair,
-      nft.mint.address,
-      tokenAccount.address,
-      new PublicKey(data.walletAddress),
-      supplyNumber
     );
 
     console.log("Token creation completed successfully!");
 
     return {
       success: true,
-      tokenAddress: nft.mint.address.toBase58(),
+      tokenAddress: mint.toBase58(),
       feeAmount: baseFee,
       feeTransaction: feeSignature,
     };
