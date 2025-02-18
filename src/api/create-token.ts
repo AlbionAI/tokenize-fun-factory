@@ -1,7 +1,6 @@
+
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { Metaplex } from '@metaplex-foundation/js';
-import { TokenStandard } from '@metaplex-foundation/mpl-token-metadata';
 
 // Your fee collector wallet address
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
@@ -50,10 +49,6 @@ export async function createToken(data: {
     const formattedEndpoint = getFormattedEndpoint(QUICKNODE_ENDPOINT);
     console.log("Initializing Solana connection with endpoint");
     const connection = new Connection(formattedEndpoint, 'confirmed');
-
-    // Initialize Metaplex
-    const metaplex = new Metaplex(connection);
-    console.log("Initialized Metaplex");
 
     // Test connection
     try {
@@ -186,23 +181,6 @@ export async function createToken(data: {
       undefined,
       TOKEN_PROGRAM_ID
     );
-
-    console.log("Step 6: Creating token metadata...");
-    try {
-      // Create metadata using Metaplex with correct API structure
-      const { nft } = await metaplex.nfts().create({
-        useNewMint: mint, // Use the existing mint instead of mintAddress
-        tokenStandard: TokenStandard.Fungible,
-        name: data.name,
-        symbol: data.symbol,
-        uri: '', // We're not using URI for now
-        sellerFeeBasisPoints: 0,
-      });
-      console.log("Created token metadata:", nft);
-    } catch (error) {
-      console.error("Error creating metadata (but token was created):", error);
-      // We don't throw here because the token is still created successfully
-    }
 
     console.log("Token creation completed successfully!");
 
