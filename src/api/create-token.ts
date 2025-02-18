@@ -1,7 +1,13 @@
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
-import { PROGRAM_ID as TOKEN_METADATA_PROGRAM_ID, createCreateMetadataAccountV3Instruction, DataV2 } from '@metaplex-foundation/mpl-token-metadata';
+import { 
+  createCreateMetadataAccountV3, 
+  PROGRAM_ID as MPL_TOKEN_METADATA_PROGRAM_ID,
+  CreateMetadataAccountV3InstructionAccounts,
+  CreateMetadataAccountV3InstructionArgs,
+  DataV2
+} from '@metaplex-foundation/mpl-token-metadata';
 
 // Your fee collector wallet address
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
@@ -237,10 +243,10 @@ export async function createToken(data: {
     const [metadataAddress] = PublicKey.findProgramAddressSync(
       [
         Buffer.from('metadata'),
-        TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+        MPL_TOKEN_METADATA_PROGRAM_ID.toBuffer(),
         mintKeypair.publicKey.toBuffer(),
       ],
-      TOKEN_METADATA_PROGRAM_ID
+      MPL_TOKEN_METADATA_PROGRAM_ID
     );
 
     // Fund the metadata account
@@ -316,32 +322,32 @@ export async function createToken(data: {
       symbol: data.symbol,
       uri: '',
       sellerFeeBasisPoints: 0,
-      creators: data.creatorName ? [
-        {
-          address: new PublicKey(data.walletAddress),
-          verified: false,
-          share: 100,
-        }
-      ] : null,
+      creators: data.creatorName ? [{
+        address: new PublicKey(data.walletAddress),
+        verified: false,
+        share: 100,
+      }] : null,
       collection: null,
       uses: null,
     };
 
-    const createMetadataInstruction = createCreateMetadataAccountV3Instruction(
-      {
-        metadata: metadataAddress,
-        mint: mint,
-        mintAuthority: new PublicKey(data.walletAddress),
-        payer: new PublicKey(data.walletAddress),
-        updateAuthority: new PublicKey(data.walletAddress),
-      },
-      {
-        createMetadataAccountArgsV3: {
-          data: metadataData,
-          isMutable: true,
-          collectionDetails: null,
-        },
-      }
+    const accounts: CreateMetadataAccountV3InstructionAccounts = {
+      metadata: metadataAddress,
+      mint: mint,
+      mintAuthority: new PublicKey(data.walletAddress),
+      payer: new PublicKey(data.walletAddress),
+      updateAuthority: new PublicKey(data.walletAddress),
+    };
+
+    const args: CreateMetadataAccountV3InstructionArgs = {
+      data: metadataData,
+      isMutable: true,
+      collectionDetails: null,
+    };
+
+    const createMetadataInstruction = createCreateMetadataAccountV3(
+      accounts,
+      args
     );
 
     // Create and send metadata transaction
