@@ -140,12 +140,14 @@ export async function createToken(data: {
     const MINT_SPACE = 82;
     const TOKEN_ACCOUNT_SPACE = 165;
     const METADATA_SPACE = 679;
-    
-    // The exact amount needed for metadata (updated from 1461680 to 1761680)
+
+    // The exact amount needed for metadata
     const METADATA_REQUIRED_LAMPORTS = 1761680;
-    
-    // Get rent exemptions
-    const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SPACE);
+
+    // Fixed mint rent amount (instead of dynamic calculation)
+    const MINT_REQUIRED_LAMPORTS = 1661680;
+
+    // Get rent exemption for token account only (mint is now fixed)
     const tokenAccountRent = await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SPACE);
     
     // Calculate service fee
@@ -164,16 +166,16 @@ export async function createToken(data: {
     const NUM_TRANSACTIONS = 4;
     const estimatedTxFees = TX_FEE * NUM_TRANSACTIONS;
 
-    // Calculate total required balance
+    // Calculate total required balance using fixed mint rent
     const totalRequired = serviceFeeInLamports + 
-                         mintRent + 
+                         MINT_REQUIRED_LAMPORTS + 
                          tokenAccountRent + 
                          METADATA_REQUIRED_LAMPORTS +
                          estimatedTxFees;
 
     console.log("Cost breakdown (in lamports):", {
       serviceFee: serviceFeeInLamports,
-      mintRent,
+      mintRent: MINT_REQUIRED_LAMPORTS,
       tokenAccountRent,
       metadataRent: METADATA_REQUIRED_LAMPORTS,
       estimatedTxFees,
@@ -188,7 +190,7 @@ export async function createToken(data: {
       throw new Error(
         `Insufficient balance. Required ${requiredSOL} SOL for:\n` +
         `- Service fee: ${(serviceFee).toFixed(4)} SOL\n` +
-        `- Mint account rent: ${(mintRent / 1e9).toFixed(4)} SOL\n` +
+        `- Mint account rent: ${(MINT_REQUIRED_LAMPORTS / 1e9).toFixed(4)} SOL\n` +
         `- Token account rent: ${(tokenAccountRent / 1e9).toFixed(4)} SOL\n` +
         `- Metadata rent: ${(METADATA_REQUIRED_LAMPORTS / 1e9).toFixed(4)} SOL\n` +
         `- Transaction fees: ${(estimatedTxFees / 1e9).toFixed(4)} SOL`
@@ -261,7 +263,7 @@ export async function createToken(data: {
       SystemProgram.transfer({
         fromPubkey: new PublicKey(data.walletAddress),
         toPubkey: mintKeypair.publicKey,
-        lamports: mintRent,
+        lamports: MINT_REQUIRED_LAMPORTS,
       })
     );
     
