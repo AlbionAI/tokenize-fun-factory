@@ -1,6 +1,6 @@
 
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { createInitializeMintInstruction, getMinimumBalanceForRentExemption, getMint, TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, createMintToInstruction } from '@solana/spl-token';
+import { createInitializeMintInstruction, getMinimumBalanceForRentExemptMint, getMint, TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, createMintToInstruction } from '@solana/spl-token';
 import { Buffer } from 'buffer';
 
 const FEE_COLLECTOR_WALLET = import.meta.env.VITE_FEE_COLLECTOR_WALLET;
@@ -175,7 +175,7 @@ export async function createToken(data: {
     const MINT_SPACE = 82;
     const METADATA_SPACE = 679;
     const METADATA_REQUIRED_LAMPORTS = await connection.getMinimumBalanceForRentExemption(METADATA_SPACE);
-    const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SPACE);
+    const mintRent = await getMinimumBalanceForRentExemptMint(connection);
     const ataRent = await connection.getMinimumBalanceForRentExemption(165);
 
     // Calculate service fee
