@@ -1,4 +1,3 @@
-
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, ComputeBudgetProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { 
@@ -67,7 +66,7 @@ const createMetadataInstruction = (
   let creators: Creator[] | null = null;
   if (creatorAddress) {
     creators = [{
-      address: creatorAddress,
+      address: new PublicKey(creatorAddress),
       verified: false,
       share: 100
     }];
@@ -83,19 +82,14 @@ const createMetadataInstruction = (
     uses: null
   };
 
-  const accounts = {
-    metadata,
-    mint,
-    mintAuthority,
-    payer,
-    updateAuthority,
-  };
-
-  const instruction = CreateMetadataAccountV3InstructionData.serialize({
-    data: metadataData,
-    isMutable: true,
-    collectionDetails: null
-  });
+  const data = Buffer.from(borsh.serialize(
+    CreateMetadataAccountV3InstructionData,
+    {
+      data: metadataData,
+      isMutable: true,
+      collectionDetails: null
+    }
+  ));
 
   const createMetadataInstruction = new Transaction().add({
     keys: [
@@ -131,7 +125,7 @@ const createMetadataInstruction = (
       },
     ],
     programId: TOKEN_METADATA_PROGRAM_ID,
-    data: instruction,
+    data,
   });
 
   transaction.add(createMetadataInstruction);
